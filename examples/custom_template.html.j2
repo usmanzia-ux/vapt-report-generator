@@ -1,0 +1,115 @@
+{# ============================================================================
+   EXAMPLE CUSTOM TEMPLATE
+   ----------------------------------------------------------------------------
+   Copy this file, restyle it to match your company's branding, then pass it
+   with:  vaptreport scan.nessus -f pdf -t my_company_template.html.j2
+
+   Available variables (see vaptreport/models.py for the full model):
+     report.client / title / assessor / assessment_date / standard
+     report.scope                -> list[str]
+     report.findings             -> list[Finding]
+     report.severity_counts()    -> {"Critical": n, ...}
+     report.risk_rating()        -> "Critical" | "High" | ...
+     finding.finding_id / title / description / remediation / evidence / source
+     finding.severity.value      -> "Critical" ...
+     finding.cvss_score / cvss_vector / cwe
+     finding.cve / references    -> list[str]
+     finding.targets             -> list[Target]; use t.label()
+   ============================================================================ #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>{{ report.title }} — {{ report.client }}</title>
+<style>
+  @page { size: A4; margin: 26mm 18mm 20mm; }
+  /* Running letterhead + page numbers, demonstrating @page features. */
+  @page {
+    @top-center { content: "SENTINEL SECURITY  ·  CONFIDENTIAL"; font-size: 8pt; color: #6b7785; }
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font-size: 8pt; color: #6b7785; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Georgia", "Times New Roman", serif; font-size: 10.5pt; color: #222; line-height: 1.6; }
+
+  /* Branded letterhead bar (purple/teal corporate theme) */
+  .brandbar { border-bottom: 4px solid #5b2a86; padding-bottom: 10px; margin-bottom: 18px; }
+  .brandbar .logo { font-size: 18pt; font-weight: bold; color: #5b2a86; letter-spacing: 1px; }
+  .brandbar .tag { font-size: 8.5pt; color: #1a9b8a; letter-spacing: 3px; text-transform: uppercase; }
+
+  h1 { font-size: 21pt; color: #5b2a86; margin: 26px 0 4px; }
+  .client { font-size: 13pt; color: #444; margin-bottom: 24px; }
+  .meta { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+  .meta td { padding: 5px 10px; border: 1px solid #e0dae8; font-size: 10pt; }
+  .meta .k { background: #f4f0f9; font-weight: bold; color: #5b2a86; width: 160px; }
+
+  h2 { font-size: 13pt; color: #5b2a86; border-bottom: 1px solid #1a9b8a;
+       padding-bottom: 3px; margin: 22px 0 10px; }
+
+  table.findings { width: 100%; border-collapse: collapse; }
+  table.findings th { background: #5b2a86; color: #fff; padding: 6px 8px; font-size: 9pt; text-align: left; }
+  table.findings td { padding: 6px 8px; border-bottom: 1px solid #ece7f2; font-size: 9.5pt; }
+
+  .sev { font-weight: bold; }
+  .sev-Critical { color: #b00020; } .sev-High { color: #d35400; }
+  .sev-Medium { color: #b8860b; } .sev-Low { color: #2e7d32; } .sev-Informational { color: #607d8b; }
+
+  .finding { page-break-inside: avoid; margin-bottom: 16px; padding-bottom: 8px;
+             border-bottom: 1px dashed #d8d0e4; }
+  .finding h3 { font-size: 12pt; color: #2a2240; margin-bottom: 4px; }
+  .lbl { font-weight: bold; color: #5b2a86; font-size: 9pt; text-transform: uppercase; letter-spacing: .5px; }
+  .evidence { font-family: monospace; font-size: 8.5pt; background: #f6f4fa; border-left: 3px solid #5b2a86;
+              padding: 8px 10px; white-space: pre-wrap; word-break: break-word; margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<div class="brandbar">
+  <div class="logo">SENTINEL SECURITY</div>
+  <div class="tag">Offensive Security &amp; Assurance</div>
+</div>
+
+<h1>{{ report.title }}</h1>
+<div class="client">Prepared for: {{ report.client }}</div>
+
+{% set counts = report.severity_counts() %}
+<table class="meta">
+  <tr><td class="k">Overall Risk</td><td class="sev sev-{{ report.risk_rating() }}">{{ report.risk_rating() }}</td></tr>
+  <tr><td class="k">Assessor</td><td>{{ report.assessor }}</td></tr>
+  <tr><td class="k">Date</td><td>{{ report.assessment_date }}</td></tr>
+  <tr><td class="k">Standard</td><td>{{ report.standard }}</td></tr>
+  <tr><td class="k">Findings</td><td>{{ report.findings | length }}
+      (Critical {{ counts.Critical }} · High {{ counts.High }} · Medium {{ counts.Medium }} · Low {{ counts.Low }})</td></tr>
+  {% if report.scope %}<tr><td class="k">Scope</td><td>{{ report.scope | join(", ") }}</td></tr>{% endif %}
+</table>
+
+<h2>Findings Summary</h2>
+<table class="findings">
+  <tr><th style="width:60px;">ID</th><th>Finding</th><th style="width:90px;">Severity</th><th style="width:50px;">CVSS</th></tr>
+  {% for f in report.findings %}
+  <tr>
+    <td>{{ f.finding_id }}</td>
+    <td>{{ f.title }}</td>
+    <td class="sev sev-{{ f.severity.value }}">{{ f.severity.value }}</td>
+    <td>{{ "%.1f"|format(f.cvss_score) if f.cvss_score is not none else "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2>Detailed Findings</h2>
+{% for f in report.findings %}
+<div class="finding">
+  <h3>{{ f.finding_id }} — {{ f.title }}
+      <span class="sev sev-{{ f.severity.value }}">[{{ f.severity.value }}]</span></h3>
+  <div style="font-size:9pt; color:#555;">
+    {% if f.cvss_score is not none %}CVSS {{ "%.1f"|format(f.cvss_score) }} · {% endif %}
+    {% if f.cwe %}{{ f.cwe }} · {% endif %}{% if f.cve %}{{ f.cve | join(", ") }} · {% endif %}Source: {{ f.source }}
+  </div>
+  {% if f.targets %}<p><span class="lbl">Targets:</span> {% for t in f.targets %}{{ t.label() }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  {% if f.description %}<p><span class="lbl">Description</span><br/>{{ f.description }}</p>{% endif %}
+  {% if f.evidence %}<div class="lbl">Evidence</div><div class="evidence">{{ f.evidence }}</div>{% endif %}
+  {% if f.remediation %}<p><span class="lbl">Remediation</span><br/>{{ f.remediation }}</p>{% endif %}
+</div>
+{% endfor %}
+
+</body>
+</html>

@@ -77,6 +77,11 @@ def test_parse_findings_json():
     assert sqli.cvss_score == 9.8
 
 
+def test_no_acme_in_examples():
+    text = (EXAMPLES / "sample_findings.json").read_text().lower()
+    assert "acme" not in text
+
+
 def test_parse_nmap():
     findings = detect_and_parse(str(EXAMPLES / "sample_nmap.xml"))
     # POODLE vuln script + open-service inventory
@@ -102,6 +107,52 @@ def test_render_html(tmp_path):
     html = Path(out).read_text()
     assert "SQL Injection" in html
     assert "VR-001" in html
+
+
+def test_html_escapes_xss_payload(tmp_path):
+    """An XSS PoC in an evidence field must be escaped, not executable."""
+    from vaptreport import reporters
+
+    findings = detect_and_parse(str(EXAMPLES / "sample_findings.json"))
+    report = Report(findings=findings).finalize()
+    html = Path(reporters.render(report, "html", str(tmp_path / "r.html"))).read_text()
+    # The raw, executable payload must NOT appear...
+    assert "<img src=x onerror=alert" not in html
+    # ...but its escaped, inert form must.
+    assert "&lt;img src=x onerror=alert" in html
+
+
+def test_custom_template(tmp_path):
+    from vaptreport import reporters
+
+    findings = detect_and_parse(str(EXAMPLES / "sample_findings.json"))
+    report = Report(findings=findings).finalize()
+    out = reporters.render(
+        report, "html", str(tmp_path / "r.html"),
+        template=str(EXAMPLES / "custom_template.html.j2"),
+    )
+    html = Path(out).read_text()
+    assert "SENTINEL SECURITY" in html  # branding from the custom template
+    assert "VR-001" in html
+
+
+def test_custom_template_not_supported_for_xlsx(tmp_path):
+    from vaptreport import reporters
+
+    report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json")))
+    with pytest.raises(ValueError):
+        reporters.render(report, "xlsx", str(tmp_path / "r.xlsx"), template="x.j2")
+
+
+def test_render_pdf(tmp_path):
+    pytest.importorskip("weasyprint")
+    from vaptreport import reporters
+
+    findings = detect_and_parse(str(EXAMPLES / "sample_findings.json"))
+    report = Report(findings=findings).finalize()
+    out = reporters.render(report, "pdf", str(tmp_path / "r.pdf"))
+    data = Path(out).read_bytes()
+    assert data[:4] == b"%PDF"  # valid PDF magic bytes
 
 
 def test_render_xlsx(tmp_path):
