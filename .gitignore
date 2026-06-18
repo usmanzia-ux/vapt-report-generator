@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Generated reports
+*.pdf
+*.html
+*.xlsx
+!examples/*
+# (keep example inputs; ignore generated outputs at repo root)
+/vapt_report.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp

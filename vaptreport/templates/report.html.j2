@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>{{ report.title }} — {{ report.client }}</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-size: 10.5pt;
+         color: #1a2535; line-height: 1.55; }
+
+  /* Cover */
+  .cover { background: #0d1b2a; color: #fff; padding: 60px 44px; margin: -18mm -16mm 24px;
+           page-break-after: always; }
+  .cover h1 { font-size: 30pt; line-height: 1.15; }
+  .cover .sub { color: #4ecb8d; font-weight: bold; margin-top: 10px; font-size: 13pt; }
+  .cover .meta { margin-top: 48px; font-size: 11pt; color: #c8dff0; line-height: 2; }
+  .cover .meta b { color: #fff; display: inline-block; width: 150px; }
+  .risk-pill { display: inline-block; padding: 4px 16px; border-radius: 14px;
+               font-weight: bold; color: #fff; font-size: 11pt; }
+
+  h2.sec { font-size: 13pt; color: #0d1b2a; border-bottom: 2px solid #4ecb8d;
+           padding-bottom: 4px; margin: 26px 0 12px; }
+
+  /* Severity colours */
+  .sev-Critical { background: #b00020; }
+  .sev-High     { background: #e65100; }
+  .sev-Medium   { background: #f9a825; color: #1a2535 !important; }
+  .sev-Low      { background: #2e7d32; }
+  .sev-Informational { background: #546e7a; }
+
+  /* Summary cards */
+  .cards { display: flex; gap: 10px; margin: 14px 0; }
+  .card { flex: 1; text-align: center; padding: 14px 6px; border-radius: 6px; color: #fff; }
+  .card .n { font-size: 24pt; font-weight: bold; line-height: 1; }
+  .card .l { font-size: 8.5pt; text-transform: uppercase; letter-spacing: .5px; margin-top: 6px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  .toc td { padding: 6px 8px; border-bottom: 1px solid #e3ebf2; font-size: 10pt; }
+  .toc .badge { font-size: 8pt; padding: 2px 9px; border-radius: 9px; color: #fff; white-space: nowrap; }
+
+  /* Finding cards */
+  .finding { border: 1px solid #dde8f2; border-left: 5px solid #0d1b2a;
+             border-radius: 4px; padding: 16px 18px; margin-bottom: 18px;
+             page-break-inside: avoid; }
+  .finding.Critical { border-left-color: #b00020; }
+  .finding.High     { border-left-color: #e65100; }
+  .finding.Medium   { border-left-color: #f9a825; }
+  .finding.Low      { border-left-color: #2e7d32; }
+  .finding.Informational { border-left-color: #546e7a; }
+  .fhead { display: flex; justify-content: space-between; align-items: center; }
+  .fid { font-size: 9pt; color: #7a8a9a; font-weight: bold; }
+  .ftitle { font-size: 12pt; font-weight: bold; color: #0d1b2a; margin: 2px 0 8px; }
+  .badge { font-size: 8.5pt; padding: 3px 11px; border-radius: 10px; color: #fff; font-weight: bold; }
+  .meta-row { font-size: 9pt; color: #44586b; margin: 6px 0; }
+  .meta-row b { color: #0d1b2a; }
+  .flabel { font-size: 8.5pt; font-weight: bold; text-transform: uppercase;
+            letter-spacing: .6px; color: #4ecb8d; margin: 12px 0 3px; }
+  .ftext { font-size: 10pt; white-space: pre-wrap; }
+  .targets { font-size: 9pt; color: #2c3e50; }
+  .targets code { background: #f0f5fa; padding: 1px 6px; border-radius: 3px; }
+  .evidence { background: #1e1e1e; color: #d4d4d4; font-family: "Consolas", monospace;
+              font-size: 8.5pt; padding: 10px 12px; border-radius: 4px;
+              white-space: pre-wrap; margin-top: 4px; }
+  .footer { text-align: center; color: #7a8a9a; font-size: 8pt; margin-top: 30px;
+            border-top: 1px solid #dde8f2; padding-top: 8px; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>{{ report.title }}</h1>
+  <div class="sub">{{ report.client }}</div>
+  <div class="meta">
+    <div><b>Overall Risk</b>
+      <span class="risk-pill sev-{{ report.risk_rating() }}">{{ report.risk_rating() }}</span>
+    </div>
+    <div><b>Assessor</b> {{ report.assessor }}</div>
+    <div><b>Date</b> {{ report.assessment_date }}</div>
+    <div><b>Standard</b> {{ report.standard }}</div>
+    <div><b>Total Findings</b> {{ report.findings | length }}</div>
+    {% if report.scope %}<div><b>Scope</b> {{ report.scope | join(", ") }}</div>{% endif %}
+  </div>
+</div>
+
+<h2 class="sec">Executive Summary</h2>
+<p>This report presents the results of a security assessment performed against
+{{ report.client }}'s in-scope assets. A total of
+<b>{{ report.findings | length }}</b> findings were identified, carrying an
+overall risk rating of <b>{{ report.risk_rating() }}</b>. The breakdown by
+severity is shown below; detailed findings, evidence, and remediation guidance
+follow in the technical section.</p>
+
+{% set counts = report.severity_counts() %}
+<div class="cards">
+  <div class="card sev-Critical"><div class="n">{{ counts.Critical }}</div><div class="l">Critical</div></div>
+  <div class="card sev-High"><div class="n">{{ counts.High }}</div><div class="l">High</div></div>
+  <div class="card sev-Medium"><div class="n">{{ counts.Medium }}</div><div class="l">Medium</div></div>
+  <div class="card sev-Low"><div class="n">{{ counts.Low }}</div><div class="l">Low</div></div>
+  <div class="card sev-Informational"><div class="n">{{ counts.Informational }}</div><div class="l">Info</div></div>
+</div>
+
+<h2 class="sec">Findings Overview</h2>
+<table class="toc">
+  <tr style="background:#0d1b2a;color:#fff;">
+    <td style="width:62px;"><b>ID</b></td>
+    <td><b>Finding</b></td>
+    <td style="width:90px;"><b>Severity</b></td>
+    <td style="width:55px;"><b>CVSS</b></td>
+  </tr>
+  {% for f in report.findings %}
+  <tr>
+    <td>{{ f.finding_id }}</td>
+    <td>{{ f.title }}</td>
+    <td><span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+    <td>{{ "%.1f"|format(f.cvss_score) if f.cvss_score is not none else "—" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+
+<h2 class="sec">Detailed Findings</h2>
+{% for f in report.findings %}
+<div class="finding {{ f.severity.value }}">
+  <div class="fhead">
+    <span class="fid">{{ f.finding_id }}</span>
+    <span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span>
+  </div>
+  <div class="ftitle">{{ f.title }}</div>
+
+  <div class="meta-row">
+    {% if f.cvss_score is not none %}<b>CVSS:</b> {{ "%.1f"|format(f.cvss_score) }}
+      {% if f.cvss_vector %}({{ f.cvss_vector }}){% endif %} &nbsp;|&nbsp;{% endif %}
+    {% if f.cwe %}<b>CWE:</b> {{ f.cwe }} &nbsp;|&nbsp;{% endif %}
+    {% if f.cve %}<b>CVE:</b> {{ f.cve | join(", ") }} &nbsp;|&nbsp;{% endif %}
+    <b>Source:</b> {{ f.source }}
+  </div>
+
+  {% if f.targets %}
+  <div class="flabel">Affected Targets</div>
+  <div class="targets">
+    {% for t in f.targets %}<code>{{ t.label() }}</code> {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if f.description %}
+  <div class="flabel">Description</div>
+  <div class="ftext">{{ f.description }}</div>
+  {% endif %}
+
+  {% if f.evidence %}
+  <div class="flabel">Evidence</div>
+  <div class="evidence">{{ f.evidence }}</div>
+  {% endif %}
+
+  {% if f.remediation %}
+  <div class="flabel">Remediation</div>
+  <div class="ftext">{{ f.remediation }}</div>
+  {% endif %}
+
+  {% if f.references %}
+  <div class="flabel">References</div>
+  <div class="ftext">{% for r in f.references %}{{ r }}<br/>{% endfor %}</div>
+  {% endif %}
+</div>
+{% endfor %}
+
+<div class="footer">
+  {{ report.assessor }} &nbsp;·&nbsp; {{ report.client }} &nbsp;·&nbsp;
+  Generated by vapt-report-generator &nbsp;·&nbsp; {{ report.assessment_date }}<br/>
+  CONFIDENTIAL — This document contains sensitive security information.
+</div>
+
+</body>
+</html>

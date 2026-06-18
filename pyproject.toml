@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vapt-report-generator"
+version = "1.0.0"
+description = "Turn raw Nmap / Nessus scanner output into professional VAPT reports (HTML, PDF, Excel) with CVSS scoring."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Usman Zia", email = "usmanzia600@gmail.com" }]
+keywords = ["security", "pentesting", "vapt", "owasp", "cvss", "nessus", "nmap", "report"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Information Technology",
+    "Topic :: Security",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+dependencies = [
+    "jinja2>=3.1",
+    "openpyxl>=3.1",
+    "rich>=13.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+pdf = ["weasyprint>=60.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+
+[project.urls]
+Homepage = "https://github.com/usmanzia-ux/vapt-report-generator"
+Issues = "https://github.com/usmanzia-ux/vapt-report-generator/issues"
+
+[project.scripts]
+vaptreport = "vaptreport.cli:main"
+
+[tool.setuptools]
+packages = ["vaptreport", "vaptreport.parsers", "vaptreport.reporters"]
+
+[tool.setuptools.package-data]
+vaptreport = ["templates/*.j2"]

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sV -sC -oX sample_nmap.xml scanme.example.com" version="7.94">
+  <host>
+    <status state="up" reason="echo-reply"/>
+    <address addr="93.184.216.34" addrtype="ipv4"/>
+    <hostnames>
+      <hostname name="scanme.example.com" type="user"/>
+    </hostnames>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack"/>
+        <service name="ssh" product="OpenSSH" version="7.6p1 Ubuntu 4ubuntu0.3"/>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="open" reason="syn-ack"/>
+        <service name="http" product="Apache httpd" version="2.4.29"/>
+        <script id="http-server-header" output="Apache/2.4.29 (Ubuntu)"/>
+      </port>
+      <port protocol="tcp" portid="443">
+        <state state="open" reason="syn-ack"/>
+        <service name="https" product="nginx" version="1.14.0"/>
+        <script id="ssl-poodle" output="VULNERABLE: SSL POODLE information leak&#10;State: VULNERABLE&#10;CVE-2014-3566"/>
+      </port>
+      <port protocol="tcp" portid="3306">
+        <state state="open" reason="syn-ack"/>
+        <service name="mysql" product="MySQL" version="5.7.33"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>

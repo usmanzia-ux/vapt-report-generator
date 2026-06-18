@@ -1,0 +1,55 @@
+{
+  "report": {
+    "client": "Acme Financial Corp",
+    "title": "Web Application Penetration Test Report",
+    "assessor": "Usman Zia",
+    "assessment_date": "2026-06-18",
+    "scope": ["https://app.acme-financial.com", "https://api.acme-financial.com"],
+    "standard": "OWASP Top 10 (2021) / CVSS v3.1"
+  },
+  "findings": [
+    {
+      "title": "SQL Injection in Login Form",
+      "description": "The username parameter of the login endpoint is concatenated directly into a SQL query. A boolean-based blind injection allowed authentication bypass and enumeration of the users table.",
+      "targets": ["app.acme-financial.com:443"],
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+      "cwe": "CWE-89",
+      "remediation": "Use parameterised queries / prepared statements for all database access. Apply input validation and least-privilege database accounts.",
+      "references": ["https://owasp.org/Top10/A03_2021-Injection/"],
+      "evidence": "POST /login  username=admin' OR '1'='1'-- -  ->  HTTP 302 to /dashboard"
+    },
+    {
+      "title": "Stored Cross-Site Scripting in Profile Bio",
+      "description": "The profile bio field stores and renders unsanitised HTML, allowing JavaScript execution in the context of any user viewing the profile.",
+      "targets": ["app.acme-financial.com:443"],
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:L/A:N",
+      "cwe": "CWE-79",
+      "remediation": "Context-aware output encoding on render; apply a strict Content-Security-Policy.",
+      "evidence": "bio = <img src=x onerror=alert(document.cookie)>"
+    },
+    {
+      "title": "JWT Signature Not Verified (alg:none Accepted)",
+      "description": "The API accepts JWTs signed with the 'none' algorithm, allowing an attacker to forge tokens with arbitrary claims including role=admin.",
+      "targets": ["api.acme-financial.com:443"],
+      "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+      "cwe": "CWE-347",
+      "remediation": "Enforce a fixed signing algorithm server-side and reject 'none'. Validate signatures on every request."
+    },
+    {
+      "title": "Missing HTTP Security Headers",
+      "description": "Responses lack Content-Security-Policy, X-Frame-Options, and Strict-Transport-Security headers.",
+      "targets": ["app.acme-financial.com:443", "api.acme-financial.com:443"],
+      "cvss_vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:R/S:U/C:L/I:L/A:N",
+      "cwe": "CWE-16",
+      "remediation": "Add CSP, X-Frame-Options: DENY, X-Content-Type-Options: nosniff, and HSTS with max-age >= 31536000."
+    },
+    {
+      "title": "Verbose Server Version Disclosure",
+      "severity": "Informational",
+      "description": "The Server header discloses the exact web server and framework versions, aiding targeted attacks.",
+      "targets": ["app.acme-financial.com:443"],
+      "cwe": "CWE-200",
+      "remediation": "Suppress or genericise version banners in server and framework configuration."
+    }
+  ]
+}

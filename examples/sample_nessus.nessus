@@ -1,0 +1,40 @@
+<?xml version="1.0" ?>
+<NessusClientData_v2>
+  <Report name="Sample Scan">
+    <ReportHost name="10.10.10.25">
+      <ReportItem port="445" svc_name="cifs" protocol="tcp" severity="4"
+                  pluginID="34477" pluginName="MS17-010: EternalBlue SMB Remote Code Execution">
+        <synopsis>The remote Windows host is affected by a remote code execution vulnerability.</synopsis>
+        <description>The remote Windows host is affected by the EternalBlue vulnerability in SMBv1, allowing unauthenticated remote code execution.</description>
+        <solution>Apply the Microsoft MS17-010 security update and disable SMBv1.</solution>
+        <cvss3_base_score>9.8</cvss3_base_score>
+        <cvss3_vector>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</cvss3_vector>
+        <cve>CVE-2017-0144</cve>
+        <cwe>94</cwe>
+        <see_also>https://docs.microsoft.com/security-updates/securitybulletins/2017/ms17-010</see_also>
+        <plugin_output>SMBv1 detected; target responded to crafted EternalBlue probe.</plugin_output>
+      </ReportItem>
+      <ReportItem port="3389" svc_name="msrdp" protocol="tcp" severity="2"
+                  pluginID="57690" pluginName="Terminal Services Encryption Level is Medium or Low">
+        <synopsis>The remote host is using weak encryption for RDP.</synopsis>
+        <description>The Remote Desktop Service is configured to use a weak encryption level, exposing sessions to man-in-the-middle attacks.</description>
+        <solution>Configure RDP to use TLS and enforce a high encryption level / NLA.</solution>
+        <cvss3_base_score>5.9</cvss3_base_score>
+        <cvss3_vector>CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:N/A:N</cvss3_vector>
+        <cwe>326</cwe>
+      </ReportItem>
+    </ReportHost>
+    <ReportHost name="10.10.10.26">
+      <ReportItem port="445" svc_name="cifs" protocol="tcp" severity="4"
+                  pluginID="34477" pluginName="MS17-010: EternalBlue SMB Remote Code Execution">
+        <synopsis>The remote Windows host is affected by a remote code execution vulnerability.</synopsis>
+        <description>The remote Windows host is affected by the EternalBlue vulnerability in SMBv1.</description>
+        <solution>Apply the Microsoft MS17-010 security update and disable SMBv1.</solution>
+        <cvss3_base_score>9.8</cvss3_base_score>
+        <cvss3_vector>CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</cvss3_vector>
+        <cve>CVE-2017-0144</cve>
+        <cwe>94</cwe>
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>
