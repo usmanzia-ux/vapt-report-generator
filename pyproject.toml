@@ -26,8 +26,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-pdf = ["weasyprint>=60.0"]
-dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+pdf = ["weasyprint>=60.0", "pypdf>=4.0"]
+dev = ["pytest>=7.0", "pytest-cov>=4.0", "pypdf>=4.0"]
 
 [project.urls]
 Homepage = "https://github.com/usmanzia-ux/vapt-report-generator"

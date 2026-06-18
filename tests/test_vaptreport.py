@@ -89,6 +89,95 @@ def test_parse_nmap():
     assert any("Open Network Services" in f.title for f in findings)
 
 
+# Synthetic Acunetix Developer Report text (mimics the real PDF layout,
+# including the typographic ligatures Acunetix uses: "Classiﬁcation",
+# "Aﬀected"). Lets us test the parser without shipping a real client PDF.
+_ACUNETIX_TEXT = """Developer Report
+Acunetix Security Audit
+Scan of test.example.com
+Host test.example.com
+Start url https://test.example.com/
+2
+Alerts summary
+Conﬁguration ﬁle disclosure
+Classiﬁcation
+CVSS3
+CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:L/I:N/A:NBase Score: 5.8Attack Vector: Network
+CWE CWE-538
+Aﬀected items Variation
+/WEB-INF/web.xml 1
+HTTP Strict Transport Security (HSTS) Policy Not Enabled
+Classiﬁcation
+CWE CWE-16
+Aﬀected items Variation
+Web Server 1
+3
+Alerts details
+Conﬁguration ﬁle disclosure
+Severity High
+Reported by module /Scripts/test.script
+Description
+A backup conﬁguration ﬁle was found.
+Impact
+Discloses sensitive information.
+Recommendation
+Remove this ﬁle from the web server.
+References
+OWASP (https://owasp.org/test)
+Aﬀected items
+/WEB-INF/web.xml
+Details
+Pattern found: <web-app>OWIT</web-app>
+Request headers
+GET /WEB-INF/web.xml HTTP/1.1
+4
+HTTP Strict Transport Security (HSTS) Policy Not Enabled
+Severity Medium
+Reported by module /httpdata/HSTS.js
+Description
+The Strict-Transport-Security header is missing.
+Impact
+MitM attacks possible.
+Recommendation
+Implement HSTS.
+References
+hstspreload (https://hstspreload.org/)
+Aﬀected items
+Web Server
+Details
+URLs where HSTS is not enabled: https://test.example.com/a/
+Request headers
+GET /a/ HTTP/1.1
+5
+Scanned items (coverage report)
+https://test.example.com/
+"""
+
+
+def test_parse_acunetix_text():
+    from vaptreport.parsers import acunetix_pdf
+
+    findings = acunetix_pdf.parse_text(_ACUNETIX_TEXT)
+    assert len(findings) == 2
+
+    cfg = findings[0]
+    assert cfg.title == "Configuration file disclosure"   # ligature normalised
+    assert cfg.severity == Severity.HIGH
+    assert cfg.cvss_score == 5.8                            # parsed from summary
+    assert cfg.cwe == "CWE-538"
+    assert "backup configuration file" in cfg.description
+    assert "Remove this file" in cfg.remediation
+    assert cfg.references == ["https://owasp.org/test"]
+    assert "Pattern found" in cfg.evidence
+    assert cfg.targets[0].host == "test.example.com"
+    assert cfg.source == "acunetix"
+
+    hsts = findings[1]
+    assert hsts.severity == Severity.MEDIUM
+    assert hsts.cwe == "CWE-16"
+    assert hsts.cvss_score is None                          # no CVSS in summary
+
+
 def test_parse_nessus_merges_hosts():
     findings = detect_and_parse(str(EXAMPLES / "sample_nessus.nessus"))
     eternalblue = next(f for f in findings if "EternalBlue" in f.title)
