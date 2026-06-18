@@ -186,6 +186,80 @@ def test_parse_nessus_merges_hosts():
     assert eternalblue.severity == Severity.CRITICAL
 
 
+def test_parse_nuclei_jsonl():
+    findings = detect_and_parse(str(EXAMPLES / "sample_nuclei.jsonl"))
+    assert len(findings) == 4                      # git-config merged across 2 hosts
+    log4shell = next(f for f in findings if "Log4" in f.title)
+    assert log4shell.severity == Severity.CRITICAL
+    assert log4shell.cvss_score == 10.0
+    assert log4shell.cve == ["CVE-2021-44228"]
+    gitcfg = next(f for f in findings if "Git Config" in f.title)
+    assert len(gitcfg.targets) == 2
+
+
+def test_parse_burp_xml_merges_paths():
+    findings = detect_and_parse(str(EXAMPLES / "sample_burp.xml"))
+    assert len(findings) == 4                      # XSS merged across 2 paths
+    xss = next(f for f in findings if "scripting" in f.title.lower())
+    assert xss.severity == Severity.HIGH
+    assert xss.cwe == "CWE-79"
+    assert len(xss.targets) == 2
+    info = next(f for f in findings if "banner" in f.title.lower())
+    assert info.severity == Severity.INFO          # Burp "Information" -> Informational
+
+
+def test_parse_zap_json():
+    findings = detect_and_parse(str(EXAMPLES / "sample_zap.json"))
+    assert len(findings) == 4
+    sqli = next(f for f in findings if "SQL" in f.title)
+    assert sqli.severity == Severity.HIGH          # riskcode 3
+    assert sqli.cwe == "CWE-89"
+    csp = next(f for f in findings if "CSP" in f.title)
+    assert len(csp.targets) == 2                    # two instances
+    assert "parameterized queries" in sqli.remediation.lower()
+
+
+def test_parse_zap_xml(tmp_path):
+    from vaptreport.parsers import detect_and_parse as dp
+    xml = """<?xml version="1.0"?>
+<OWASPZAPReport version="2.15.0">
+  <site name="https://app.example.com" host="app.example.com" port="443" ssl="true">
+    <alerts>
+      <alertitem>
+        <alert>Path Traversal</alert>
+        <riskcode>3</riskcode>
+        <desc>&lt;p&gt;Path traversal may be possible.&lt;/p&gt;</desc>
+        <solution>&lt;p&gt;Validate and canonicalize file paths.&lt;/p&gt;</solution>
+        <reference>&lt;p&gt;https://owasp.org/path-traversal&lt;/p&gt;</reference>
+        <cweid>22</cweid>
+        <instances><instance><uri>https://app.example.com/download?file=../../etc/passwd</uri><method>GET</method><param>file</param></instance></instances>
+      </alertitem>
+    </alerts>
+  </site>
+</OWASPZAPReport>"""
+    f = tmp_path / "zap.xml"
+    f.write_text(xml)
+    findings = dp(str(f))
+    assert len(findings) == 1
+    assert findings[0].title == "Path Traversal"
+    assert findings[0].severity == Severity.HIGH
+    assert findings[0].cwe == "CWE-22"
+    assert findings[0].source == "zap"
+
+
+def test_json_dialect_sniffing():
+    """All three JSON dialects route to the correct parser."""
+    from vaptreport.parsers import _sniff_json
+    assert _sniff_json(str(EXAMPLES / "sample_zap.json")) == "zap"
+    assert _sniff_json(str(EXAMPLES / "sample_findings.json")) == "findings"
+
+
+def test_xml_dialect_sniffing():
+    from vaptreport.parsers import _sniff_xml
+    assert _sniff_xml(str(EXAMPLES / "sample_nmap.xml")) == "nmap"
+    assert _sniff_xml(str(EXAMPLES / "sample_burp.xml")) == "burp"
+
+
 # ── Reporters ──────────────────────────────────────────────────────────────────
 def test_render_html(tmp_path):
     from vaptreport import reporters
