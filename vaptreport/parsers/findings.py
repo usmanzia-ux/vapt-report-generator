@@ -8,11 +8,11 @@ Schema (all keys optional except ``title``)::
 
     {
       "report": {
-        "client": "Acme Corp",
+        "client": "Example Corporation",
         "title": "Web Application Penetration Test",
         "assessor": "Usman Zia",
         "assessment_date": "2026-06-18",
-        "scope": ["https://app.acme.com"],
+        "scope": ["https://app.example.com"],
         "standard": "OWASP Top 10 (2021)"
       },
       "findings": [
@@ -20,7 +20,7 @@ Schema (all keys optional except ``title``)::
           "title": "SQL Injection in Login Form",
           "severity": "Critical",
           "description": "...",
-          "targets": [{"host": "app.acme.com", "port": 443, "service": "https"}],
+          "targets": [{"host": "app.example.com", "port": 443, "service": "https"}],
           "cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
           "cwe": "CWE-89",
           "cve": ["CVE-2024-1234"],

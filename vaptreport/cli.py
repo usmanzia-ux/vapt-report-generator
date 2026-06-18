@@ -84,9 +84,12 @@ def main(argv: List[str] | None = None) -> int:
     )
     parser.add_argument("input", nargs="+",
                         help="One or more input files (.xml, .nessus, .json, .yaml).")
-    parser.add_argument("-f", "--format", default="html",
-                        choices=["html", "pdf", "xlsx"], help="Output format (default: html).")
+    parser.add_argument("-f", "--format", default="pdf",
+                        choices=["pdf", "html", "xlsx"], help="Output format (default: pdf).")
     parser.add_argument("-o", "--output", help="Output file path.")
+    parser.add_argument("-t", "--template",
+                        help="Custom HTML/Jinja2 template file for pdf/html output "
+                             "(use your company's branding). Omit for the generic theme.")
     parser.add_argument("--client", help="Override client name.")
     parser.add_argument("--title", help="Override report title.")
     parser.add_argument("--assessor", help="Override assessor name.")
@@ -106,8 +109,10 @@ def main(argv: List[str] | None = None) -> int:
     _print_summary(report)
 
     output = args.output or f"vapt_report{_FORMAT_EXT[args.format]}"
+    if args.template:
+        console.print(f"[cyan]ℹ[/cyan] using custom template: {args.template}")
     try:
-        path = reporters.render(report, args.format, output)
+        path = reporters.render(report, args.format, output, template=args.template)
     except Exception as exc:  # noqa: BLE001
         console.print(f"[red]✗[/red] failed to render report: {exc}")
         return 2

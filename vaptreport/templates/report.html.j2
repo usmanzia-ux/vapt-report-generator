@@ -4,86 +4,105 @@
 <meta charset="UTF-8"/>
 <title>{{ report.title }} — {{ report.client }}</title>
 <style>
-  @page { size: A4; margin: 18mm 16mm; }
+  /* Layout uses tables (not flexbox) for reliable rendering in both browsers
+     and the WeasyPrint PDF engine. */
+  @page { size: A4; margin: 16mm 15mm; }
+  @page :first { margin: 0; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-size: 10.5pt;
          color: #1a2535; line-height: 1.55; }
 
-  /* Cover */
-  .cover { background: #0d1b2a; color: #fff; padding: 60px 44px; margin: -18mm -16mm 24px;
-           page-break-after: always; }
-  .cover h1 { font-size: 30pt; line-height: 1.15; }
-  .cover .sub { color: #4ecb8d; font-weight: bold; margin-top: 10px; font-size: 13pt; }
-  .cover .meta { margin-top: 48px; font-size: 11pt; color: #c8dff0; line-height: 2; }
-  .cover .meta b { color: #fff; display: inline-block; width: 150px; }
-  .risk-pill { display: inline-block; padding: 4px 16px; border-radius: 14px;
-               font-weight: bold; color: #fff; font-size: 11pt; }
+  /* ── Cover (full first page, no negative-margin bleed) ── */
+  .cover { background: #0d1b2a; color: #fff; height: 297mm; padding: 70px 50px; }
+  .cover .kicker { color: #4ecb8d; font-size: 11pt; font-weight: bold;
+                   letter-spacing: 2px; text-transform: uppercase; }
+  .cover h1 { font-size: 30pt; line-height: 1.18; margin: 14px 0 6px; }
+  .cover .client { font-size: 16pt; color: #c8dff0; margin-bottom: 50px; }
+  .cover .meta { width: 100%; border-collapse: collapse; max-width: 460px; }
+  .cover .meta td { padding: 7px 0; font-size: 11pt; vertical-align: top;
+                    border-bottom: 1px solid #1e3450; }
+  .cover .meta .k { color: #7fa8cc; width: 170px; }
+  .cover .meta .v { color: #fff; font-weight: bold; }
+  .risk-pill { display: inline-block; padding: 3px 14px; border-radius: 12px;
+               font-weight: bold; color: #fff; font-size: 10.5pt; }
 
+  /* ── Section headings ── */
   h2.sec { font-size: 13pt; color: #0d1b2a; border-bottom: 2px solid #4ecb8d;
-           padding-bottom: 4px; margin: 26px 0 12px; }
+           padding-bottom: 4px; margin: 24px 0 12px; }
 
-  /* Severity colours */
-  .sev-Critical { background: #b00020; }
-  .sev-High     { background: #e65100; }
-  .sev-Medium   { background: #f9a825; color: #1a2535 !important; }
-  .sev-Low      { background: #2e7d32; }
-  .sev-Informational { background: #546e7a; }
+  /* ── Severity colours ── */
+  .sev-Critical { background: #b00020; color: #fff; }
+  .sev-High     { background: #e65100; color: #fff; }
+  .sev-Medium   { background: #f9a825; color: #1a2535; }
+  .sev-Low      { background: #2e7d32; color: #fff; }
+  .sev-Informational { background: #546e7a; color: #fff; }
 
-  /* Summary cards */
-  .cards { display: flex; gap: 10px; margin: 14px 0; }
-  .card { flex: 1; text-align: center; padding: 14px 6px; border-radius: 6px; color: #fff; }
-  .card .n { font-size: 24pt; font-weight: bold; line-height: 1; }
-  .card .l { font-size: 8.5pt; text-transform: uppercase; letter-spacing: .5px; margin-top: 6px; }
+  /* ── Severity summary cards (5-col table) ── */
+  .cards { width: 100%; border-collapse: separate; border-spacing: 7px 0; margin: 14px 0; }
+  .cards td { width: 20%; text-align: center; padding: 14px 4px; border-radius: 6px;
+              vertical-align: middle; }
+  .cards .n { font-size: 23pt; font-weight: bold; line-height: 1; }
+  .cards .l { font-size: 8pt; text-transform: uppercase; letter-spacing: .5px; margin-top: 6px; }
 
-  table { width: 100%; border-collapse: collapse; }
-  .toc td { padding: 6px 8px; border-bottom: 1px solid #e3ebf2; font-size: 10pt; }
-  .toc .badge { font-size: 8pt; padding: 2px 9px; border-radius: 9px; color: #fff; white-space: nowrap; }
+  /* ── Findings overview table ── */
+  .toc { width: 100%; border-collapse: collapse; }
+  .toc th { background: #0d1b2a; color: #fff; font-size: 9.5pt; text-align: left;
+            padding: 7px 9px; }
+  .toc td { padding: 6px 9px; border-bottom: 1px solid #e3ebf2; font-size: 10pt;
+            vertical-align: middle; }
+  .toc .c-id { width: 64px; } .toc .c-sev { width: 96px; } .toc .c-cvss { width: 52px; text-align: center; }
+  .badge { display: inline-block; font-size: 8.5pt; padding: 2px 10px; border-radius: 10px;
+           font-weight: bold; }
 
-  /* Finding cards */
+  /* ── Detailed finding blocks ── */
   .finding { border: 1px solid #dde8f2; border-left: 5px solid #0d1b2a;
-             border-radius: 4px; padding: 16px 18px; margin-bottom: 18px;
+             border-radius: 4px; padding: 14px 18px; margin-bottom: 16px;
              page-break-inside: avoid; }
   .finding.Critical { border-left-color: #b00020; }
   .finding.High     { border-left-color: #e65100; }
   .finding.Medium   { border-left-color: #f9a825; }
   .finding.Low      { border-left-color: #2e7d32; }
   .finding.Informational { border-left-color: #546e7a; }
-  .fhead { display: flex; justify-content: space-between; align-items: center; }
-  .fid { font-size: 9pt; color: #7a8a9a; font-weight: bold; }
-  .ftitle { font-size: 12pt; font-weight: bold; color: #0d1b2a; margin: 2px 0 8px; }
-  .badge { font-size: 8.5pt; padding: 3px 11px; border-radius: 10px; color: #fff; font-weight: bold; }
-  .meta-row { font-size: 9pt; color: #44586b; margin: 6px 0; }
+  .fhead { width: 100%; border-collapse: collapse; }
+  .fhead .fid { font-size: 9pt; color: #7a8a9a; font-weight: bold; vertical-align: middle; }
+  .fhead .fbadge { text-align: right; vertical-align: middle; }
+  .ftitle { font-size: 12pt; font-weight: bold; color: #0d1b2a; margin: 6px 0 8px; }
+  .meta-row { font-size: 9pt; color: #44586b; margin: 4px 0 2px; }
   .meta-row b { color: #0d1b2a; }
   .flabel { font-size: 8.5pt; font-weight: bold; text-transform: uppercase;
-            letter-spacing: .6px; color: #4ecb8d; margin: 12px 0 3px; }
+            letter-spacing: .6px; color: #1a7a50; margin: 11px 0 3px; }
   .ftext { font-size: 10pt; white-space: pre-wrap; }
-  .targets { font-size: 9pt; color: #2c3e50; }
-  .targets code { background: #f0f5fa; padding: 1px 6px; border-radius: 3px; }
-  .evidence { background: #1e1e1e; color: #d4d4d4; font-family: "Consolas", monospace;
+  .targets code { background: #f0f5fa; padding: 1px 6px; border-radius: 3px;
+                  font-size: 9pt; display: inline-block; margin: 2px 3px 2px 0; }
+  .evidence { background: #1e1e1e; color: #d4d4d4; font-family: "Consolas", "DejaVu Sans Mono", monospace;
               font-size: 8.5pt; padding: 10px 12px; border-radius: 4px;
-              white-space: pre-wrap; margin-top: 4px; }
-  .footer { text-align: center; color: #7a8a9a; font-size: 8pt; margin-top: 30px;
+              white-space: pre-wrap; word-break: break-word; margin-top: 4px; }
+
+  .footer { text-align: center; color: #7a8a9a; font-size: 8pt; margin-top: 26px;
             border-top: 1px solid #dde8f2; padding-top: 8px; }
 </style>
 </head>
 <body>
 
+{# ── COVER PAGE ── #}
 <div class="cover">
+  <div class="kicker">Security Assessment Report</div>
   <h1>{{ report.title }}</h1>
-  <div class="sub">{{ report.client }}</div>
-  <div class="meta">
-    <div><b>Overall Risk</b>
-      <span class="risk-pill sev-{{ report.risk_rating() }}">{{ report.risk_rating() }}</span>
-    </div>
-    <div><b>Assessor</b> {{ report.assessor }}</div>
-    <div><b>Date</b> {{ report.assessment_date }}</div>
-    <div><b>Standard</b> {{ report.standard }}</div>
-    <div><b>Total Findings</b> {{ report.findings | length }}</div>
-    {% if report.scope %}<div><b>Scope</b> {{ report.scope | join(", ") }}</div>{% endif %}
-  </div>
+  <div class="client">{{ report.client }}</div>
+  <table class="meta">
+    <tr><td class="k">Overall Risk</td>
+        <td class="v"><span class="risk-pill sev-{{ report.risk_rating() }}">{{ report.risk_rating() }}</span></td></tr>
+    <tr><td class="k">Total Findings</td><td class="v">{{ report.findings | length }}</td></tr>
+    <tr><td class="k">Assessor</td><td class="v">{{ report.assessor }}</td></tr>
+    <tr><td class="k">Date</td><td class="v">{{ report.assessment_date }}</td></tr>
+    <tr><td class="k">Standard</td><td class="v">{{ report.standard }}</td></tr>
+    {% if report.scope %}<tr><td class="k">Scope</td><td class="v">{{ report.scope | join(", ") }}</td></tr>{% endif %}
+  </table>
 </div>
 
+{# ── EXECUTIVE SUMMARY ── #}
 <h2 class="sec">Executive Summary</h2>
+{% set counts = report.severity_counts() %}
 <p>This report presents the results of a security assessment performed against
 {{ report.client }}'s in-scope assets. A total of
 <b>{{ report.findings | length }}</b> findings were identified, carrying an
@@ -91,55 +110,48 @@ overall risk rating of <b>{{ report.risk_rating() }}</b>. The breakdown by
 severity is shown below; detailed findings, evidence, and remediation guidance
 follow in the technical section.</p>
 
-{% set counts = report.severity_counts() %}
-<div class="cards">
-  <div class="card sev-Critical"><div class="n">{{ counts.Critical }}</div><div class="l">Critical</div></div>
-  <div class="card sev-High"><div class="n">{{ counts.High }}</div><div class="l">High</div></div>
-  <div class="card sev-Medium"><div class="n">{{ counts.Medium }}</div><div class="l">Medium</div></div>
-  <div class="card sev-Low"><div class="n">{{ counts.Low }}</div><div class="l">Low</div></div>
-  <div class="card sev-Informational"><div class="n">{{ counts.Informational }}</div><div class="l">Info</div></div>
-</div>
+<table class="cards"><tr>
+  <td class="sev-Critical"><div class="n">{{ counts.Critical }}</div><div class="l">Critical</div></td>
+  <td class="sev-High"><div class="n">{{ counts.High }}</div><div class="l">High</div></td>
+  <td class="sev-Medium"><div class="n">{{ counts.Medium }}</div><div class="l">Medium</div></td>
+  <td class="sev-Low"><div class="n">{{ counts.Low }}</div><div class="l">Low</div></td>
+  <td class="sev-Informational"><div class="n">{{ counts.Informational }}</div><div class="l">Info</div></td>
+</tr></table>
 
+{# ── FINDINGS OVERVIEW ── #}
 <h2 class="sec">Findings Overview</h2>
 <table class="toc">
-  <tr style="background:#0d1b2a;color:#fff;">
-    <td style="width:62px;"><b>ID</b></td>
-    <td><b>Finding</b></td>
-    <td style="width:90px;"><b>Severity</b></td>
-    <td style="width:55px;"><b>CVSS</b></td>
-  </tr>
+  <tr><th class="c-id">ID</th><th>Finding</th><th class="c-sev">Severity</th><th class="c-cvss">CVSS</th></tr>
   {% for f in report.findings %}
   <tr>
-    <td>{{ f.finding_id }}</td>
+    <td class="c-id">{{ f.finding_id }}</td>
     <td>{{ f.title }}</td>
-    <td><span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
-    <td>{{ "%.1f"|format(f.cvss_score) if f.cvss_score is not none else "—" }}</td>
+    <td class="c-sev"><span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+    <td class="c-cvss">{{ "%.1f"|format(f.cvss_score) if f.cvss_score is not none else "—" }}</td>
   </tr>
   {% endfor %}
 </table>
 
+{# ── DETAILED FINDINGS ── #}
 <h2 class="sec">Detailed Findings</h2>
 {% for f in report.findings %}
 <div class="finding {{ f.severity.value }}">
-  <div class="fhead">
-    <span class="fid">{{ f.finding_id }}</span>
-    <span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span>
-  </div>
+  <table class="fhead"><tr>
+    <td class="fid">{{ f.finding_id }}</td>
+    <td class="fbadge"><span class="badge sev-{{ f.severity.value }}">{{ f.severity.value }}</span></td>
+  </tr></table>
   <div class="ftitle">{{ f.title }}</div>
 
   <div class="meta-row">
-    {% if f.cvss_score is not none %}<b>CVSS:</b> {{ "%.1f"|format(f.cvss_score) }}
-      {% if f.cvss_vector %}({{ f.cvss_vector }}){% endif %} &nbsp;|&nbsp;{% endif %}
-    {% if f.cwe %}<b>CWE:</b> {{ f.cwe }} &nbsp;|&nbsp;{% endif %}
-    {% if f.cve %}<b>CVE:</b> {{ f.cve | join(", ") }} &nbsp;|&nbsp;{% endif %}
+    {% if f.cvss_score is not none %}<b>CVSS:</b> {{ "%.1f"|format(f.cvss_score) }}{% if f.cvss_vector %} ({{ f.cvss_vector }}){% endif %} &nbsp;|&nbsp; {% endif %}
+    {% if f.cwe %}<b>CWE:</b> {{ f.cwe }} &nbsp;|&nbsp; {% endif %}
+    {% if f.cve %}<b>CVE:</b> {{ f.cve | join(", ") }} &nbsp;|&nbsp; {% endif %}
     <b>Source:</b> {{ f.source }}
   </div>
 
   {% if f.targets %}
   <div class="flabel">Affected Targets</div>
-  <div class="targets">
-    {% for t in f.targets %}<code>{{ t.label() }}</code> {% endfor %}
-  </div>
+  <div class="targets">{% for t in f.targets %}<code>{{ t.label() }}</code>{% endfor %}</div>
   {% endif %}
 
   {% if f.description %}
@@ -159,7 +171,8 @@ follow in the technical section.</p>
 
   {% if f.references %}
   <div class="flabel">References</div>
-  <div class="ftext">{% for r in f.references %}{{ r }}<br/>{% endfor %}</div>
+  <div class="ftext">{% for r in f.references %}{{ r }}
+{% endfor %}</div>
   {% endif %}
 </div>
 {% endfor %}
