@@ -20,8 +20,9 @@ found the issue.
 
 ## Features
 
-- **Multi-source ingestion** — Nmap XML, Nessus `.nessus`, and a generic
-  JSON/YAML findings format. Mix several inputs into one report.
+- **Multi-source ingestion** — Nmap XML, Nessus `.nessus`, **Acunetix Developer
+  Report PDFs**, and a generic JSON/YAML findings format. Mix several inputs
+  into one report.
 - **Auto-detection** — point it at a file; it figures out the format.
 - **CVSS v3.1 engine** — a spec-compliant base-score calculator (not a lookup
   table) derives scores from vectors and maps them to severity ratings.
@@ -57,6 +58,9 @@ pip install -e ".[pdf]"
 ```bash
 # Default output is PDF — what most clients actually want
 vaptreport examples/sample_findings.json -o report.pdf
+
+# Ingest an Acunetix Developer Report PDF directly
+vaptreport acunetix_developer_report.pdf -o report.pdf
 
 # Combine an Nmap scan and manual findings into one PDF
 vaptreport examples/sample_nmap.xml examples/sample_findings.json \
@@ -174,6 +178,7 @@ vaptreport/
 ├── parsers/
 │   ├── nmap.py          # Nmap XML  -> Findings
 │   ├── nessus.py        # Nessus .nessus -> Findings (host-merged)
+│   ├── acunetix_pdf.py  # Acunetix Developer Report PDF -> Findings
 │   └── findings.py      # JSON/YAML  -> Findings  (also the canonical schema)
 ├── reporters/
 │   ├── html.py          # Jinja2 -> HTML

@@ -83,7 +83,8 @@ def main(argv: List[str] | None = None) -> int:
         description="Turn Nmap / Nessus / findings files into professional VAPT reports.",
     )
     parser.add_argument("input", nargs="+",
-                        help="One or more input files (.xml, .nessus, .json, .yaml).")
+                        help="One or more input files: .xml (Nmap/Nessus), .nessus, "
+                             ".pdf (Acunetix report), .json/.yaml (findings).")
     parser.add_argument("-f", "--format", default="pdf",
                         choices=["pdf", "html", "xlsx"], help="Output format (default: pdf).")
     parser.add_argument("-o", "--output", help="Output file path.")
