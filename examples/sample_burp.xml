@@ -1,0 +1,72 @@
+<?xml version="1.0"?>
+<issues burpVersion="2024.5">
+  <issue>
+    <serialNumber>1001</serialNumber>
+    <type>1049088</type>
+    <name>SQL injection</name>
+    <host ip="93.184.216.34">https://app.example.com</host>
+    <path>/products</path>
+    <location>/products [category parameter]</location>
+    <severity>High</severity>
+    <confidence>Certain</confidence>
+    <issueBackground>&lt;p&gt;SQL injection vulnerabilities arise when user-controllable data is incorporated into database SQL queries in an unsafe manner.&lt;/p&gt;&lt;p&gt;See &lt;a href="https://portswigger.net/web-security/sql-injection"&gt;the reference&lt;/a&gt;.&lt;/p&gt;</issueBackground>
+    <remediationBackground>&lt;p&gt;Use parameterized queries (prepared statements) for all database access.&lt;/p&gt;</remediationBackground>
+    <issueDetail>The category parameter appears to be vulnerable to SQL injection. The payload ' OR '1'='1 returned additional rows.</issueDetail>
+    <vulnerabilityClassifications>&lt;a href="https://cwe.mitre.org/data/definitions/89.html"&gt;CWE-89: SQL Injection&lt;/a&gt;</vulnerabilityClassifications>
+  </issue>
+  <issue>
+    <serialNumber>1002</serialNumber>
+    <type>2097920</type>
+    <name>Cross-site scripting (reflected)</name>
+    <host ip="93.184.216.34">https://app.example.com</host>
+    <path>/search</path>
+    <location>/search [q parameter]</location>
+    <severity>High</severity>
+    <confidence>Firm</confidence>
+    <issueBackground>&lt;p&gt;Reflected XSS arises when user input is echoed into the response without sanitisation.&lt;/p&gt;</issueBackground>
+    <remediationBackground>&lt;p&gt;HTML-encode user input on output and apply a Content Security Policy.&lt;/p&gt;</remediationBackground>
+    <issueDetail>The q parameter reflects unencoded input.</issueDetail>
+    <vulnerabilityClassifications>&lt;a href="https://cwe.mitre.org/data/definitions/79.html"&gt;CWE-79&lt;/a&gt;</vulnerabilityClassifications>
+  </issue>
+  <issue>
+    <serialNumber>1003</serialNumber>
+    <type>2097920</type>
+    <name>Cross-site scripting (reflected)</name>
+    <host ip="93.184.216.34">https://app.example.com</host>
+    <path>/feedback</path>
+    <location>/feedback [comment parameter]</location>
+    <severity>High</severity>
+    <confidence>Firm</confidence>
+    <issueBackground>&lt;p&gt;Reflected XSS arises when user input is echoed into the response without sanitisation.&lt;/p&gt;</issueBackground>
+    <remediationBackground>&lt;p&gt;HTML-encode user input on output and apply a Content Security Policy.&lt;/p&gt;</remediationBackground>
+    <issueDetail>The comment parameter reflects unencoded input.</issueDetail>
+    <vulnerabilityClassifications>&lt;a href="https://cwe.mitre.org/data/definitions/79.html"&gt;CWE-79&lt;/a&gt;</vulnerabilityClassifications>
+  </issue>
+  <issue>
+    <serialNumber>1004</serialNumber>
+    <type>5243392</type>
+    <name>Cookie without HttpOnly flag set</name>
+    <host ip="93.184.216.34">https://app.example.com</host>
+    <path>/</path>
+    <location>/</location>
+    <severity>Low</severity>
+    <confidence>Certain</confidence>
+    <issueBackground>&lt;p&gt;If a cookie is not flagged HttpOnly it can be read by client-side scripts.&lt;/p&gt;</issueBackground>
+    <remediationBackground>&lt;p&gt;Set the HttpOnly attribute on all session cookies.&lt;/p&gt;</remediationBackground>
+    <issueDetail>The session cookie does not have the HttpOnly flag.</issueDetail>
+    <vulnerabilityClassifications>&lt;a href="https://cwe.mitre.org/data/definitions/1004.html"&gt;CWE-1004&lt;/a&gt;</vulnerabilityClassifications>
+  </issue>
+  <issue>
+    <serialNumber>1005</serialNumber>
+    <type>6291968</type>
+    <name>Information disclosure - server banner</name>
+    <host ip="93.184.216.34">https://app.example.com</host>
+    <path>/</path>
+    <location>/</location>
+    <severity>Information</severity>
+    <confidence>Certain</confidence>
+    <issueBackground>&lt;p&gt;The server discloses version information in response headers.&lt;/p&gt;</issueBackground>
+    <remediationBackground>&lt;p&gt;Suppress version banners.&lt;/p&gt;</remediationBackground>
+    <issueDetail>Server: nginx/1.14.0</issueDetail>
+  </issue>
+</issues>
