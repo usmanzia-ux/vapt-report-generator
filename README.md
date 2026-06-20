@@ -217,6 +217,11 @@ your document — cover, methodology, appendices, header/footer — is untouched
 Field markers: `[[id]] [[title]] [[severity]] [[cvss]] [[cvss_vector]] [[cwe]]
 [[cve]] [[targets]] [[description]] [[evidence]] [[remediation]] [[references]]`.
 
+> **Tip:** put each marker exactly where the *value* goes, keeping it out of a
+> bold label run — e.g. `CWE ID: [[cwe]]` with only `CWE ID:` bold. The tool
+> fills each marker in place and preserves that run's formatting, so a bold
+> label stays bold and the value keeps the value's styling.
+
 **2. Any company template (no setup) — "branding shell".** If your `.docx` has
 no markers or tags, the tool keeps the *entire* document and **appends the
 findings** as a new section in the document's own styles. Drop in any template
