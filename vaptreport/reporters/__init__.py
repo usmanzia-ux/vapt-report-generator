@@ -17,9 +17,9 @@ def render(
 ) -> str:
     """Render ``report`` to ``output`` in the requested ``fmt``.
 
-    Supported formats: ``pdf``, ``html``, ``xlsx``. A custom ``template`` (an
-    HTML/Jinja2 file) applies to the ``pdf`` and ``html`` formats. Returns the
-    output path.
+    Supported formats: ``pdf``, ``html``, ``docx``, ``xlsx``. A custom
+    ``template`` applies to ``pdf``/``html`` (an HTML/Jinja2 file) and ``docx``
+    (a .docx company template filled with docxtpl). Returns the output path.
     """
     fmt = fmt.lower()
     if fmt == "html":
@@ -28,11 +28,15 @@ def render(
         from . import pdf as _pdf  # lazy: weasyprint is an optional dependency
 
         return _pdf.render(report, output, template_path=template)
+    if fmt in ("docx", "word"):
+        from . import docx as _docx  # lazy: python-docx is an optional dependency
+
+        return _docx.render(report, output, template_path=template)
     if fmt in ("xlsx", "excel"):
         if template:
             raise ValueError("Custom templates are not supported for xlsx output.")
         return _excel.render(report, output)
-    raise ValueError(f"Unknown format '{fmt}'. Choose: pdf, html, xlsx")
+    raise ValueError(f"Unknown format '{fmt}'. Choose: pdf, html, docx, xlsx")
 
 
 __all__ = ["render"]

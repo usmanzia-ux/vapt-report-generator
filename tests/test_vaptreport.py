@@ -273,3 +273,60 @@ def test_render_xlsx(tmp_path):
     report = Report(findings=findings).finalize()
     out = reporters.render(report, "xlsx", str(tmp_path / "r.xlsx"))
     assert Path(out).exists() and Path(out).stat().st_size > 0
+
+
+def _docx_text(path) -> str:
+    from docx import Document
+
+    return "\n".join(p.text for p in Document(str(path)).paragraphs)
+
+
+def test_render_docx_default(tmp_path):
+    pytest.importorskip("docx")
+    from vaptreport import reporters
+
+    findings = detect_and_parse(str(EXAMPLES / "sample_findings.json"))
+    report = Report(findings=findings).finalize()
+    out = reporters.render(report, "docx", str(tmp_path / "r.docx"))
+    text = _docx_text(out)
+    assert "Findings Summary" in text
+    assert "SQL Injection" in text  # a finding from the sample
+
+
+def test_render_docx_with_company_template(tmp_path):
+    pytest.importorskip("docxtpl")
+    from vaptreport import reporters
+
+    findings = detect_and_parse(str(EXAMPLES / "sample_findings.json"))
+    report = Report(findings=findings, client="OWIT Global").finalize()
+    out = reporters.render(report, "docx", str(tmp_path / "r.docx"),
+                           template=str(EXAMPLES / "company_template.docx"))
+    text = _docx_text(out)
+    assert "OWIT Global" in text          # field filled from the report
+    assert "{{" not in text and "{%" not in text  # no unrendered placeholders
+
+
+def test_docx_template_must_be_docx(tmp_path):
+    pytest.importorskip("docx")
+    from vaptreport import reporters
+
+    report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json")))
+    with pytest.raises(ValueError, match="must be a .docx"):
+        reporters.render(report, "docx", str(tmp_path / "r.docx"),
+                         template=str(EXAMPLES / "custom_template.html.j2"))
+
+
+def test_pdf_template_reuses_cover_page(tmp_path):
+    pytest.importorskip("weasyprint")
+    pytest.importorskip("pypdf")
+    from pypdf import PdfReader
+    from weasyprint import HTML
+    from vaptreport import reporters
+
+    cover = tmp_path / "company_cover.pdf"
+    HTML(string="<h1>ACME COVER PAGE</h1>").write_pdf(str(cover))
+    report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json"))).finalize()
+    out = reporters.render(report, "pdf", str(tmp_path / "r.pdf"), template=str(cover))
+    reader = PdfReader(out)
+    assert "ACME COVER PAGE" in reader.pages[0].extract_text()  # cover preserved
+    assert len(reader.pages) > 1  # findings appended after the cover

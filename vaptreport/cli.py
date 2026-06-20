@@ -16,7 +16,7 @@ from .parsers import findings as findings_parser
 
 console = Console()
 
-_FORMAT_EXT = {"html": ".html", "pdf": ".pdf", "xlsx": ".xlsx"}
+_FORMAT_EXT = {"html": ".html", "pdf": ".pdf", "docx": ".docx", "xlsx": ".xlsx"}
 
 
 def _gather_findings(inputs: List[str]) -> List[Finding]:
@@ -82,15 +82,20 @@ def main(argv: List[str] | None = None) -> int:
         prog="vaptreport",
         description="Turn Nmap / Nessus / findings files into professional VAPT reports.",
     )
-    parser.add_argument("input", nargs="+",
+    parser.add_argument("input", nargs="*",
                         help="One or more input files: .xml (Nmap/Nessus), .nessus, "
-                             ".pdf (Acunetix report), .json/.yaml (findings).")
+                             ".pdf (Acunetix report), .json/.yaml (findings). "
+                             "Omit to launch the interactive wizard.")
+    parser.add_argument("-i", "--interactive", action="store_true",
+                        help="Launch the guided interactive wizard.")
     parser.add_argument("-f", "--format", default="pdf",
-                        choices=["pdf", "html", "xlsx"], help="Output format (default: pdf).")
+                        choices=["pdf", "html", "docx", "xlsx"],
+                        help="Output format (default: pdf).")
     parser.add_argument("-o", "--output", help="Output file path.")
     parser.add_argument("-t", "--template",
-                        help="Custom HTML/Jinja2 template file for pdf/html output "
-                             "(use your company's branding). Omit for the generic theme.")
+                        help="Custom template file for the report's look: .html.j2 "
+                             "(pdf/html), .docx (docx output, fills every field), or "
+                             ".pdf (reuses its cover page). Omit for the generic theme.")
     parser.add_argument("--client", help="Override client name.")
     parser.add_argument("--title", help="Override report title.")
     parser.add_argument("--assessor", help="Override assessor name.")
@@ -98,6 +103,12 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("-V", "--version", action="version",
                         version=f"vapt-report-generator {__version__}")
     args = parser.parse_args(argv)
+
+    # No inputs (or -i) → launch the guided interactive wizard.
+    if args.interactive or not args.input:
+        from . import wizard
+
+        return wizard.run()
 
     console.print(f"[bold cyan]VAPT Report Generator[/bold cyan] v{__version__}\n")
 
