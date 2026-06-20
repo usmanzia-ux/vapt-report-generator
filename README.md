@@ -183,17 +183,51 @@ and you get pixel-consistent branded reports every time.
 
 ### Word (.docx) templates
 
-Most firms keep their report template as a **Word document**. Build it once with
-Jinja2 placeholders and the tool fills every field, outputting a `.docx`:
+Most firms keep their report template as a **Word document**. Point `-t` at it
+and `-f docx` — it works two ways, chosen automatically:
 
 ```bash
 vaptreport scan.nessus -f docx -t company_template.docx -o report.docx
 ```
 
-Start from [`examples/company_template.docx`](examples/company_template.docx).
-The placeholders available are `{{ client }}`, `{{ title }}`, `{{ assessor }}`,
-`{{ date }}`, `{{ standard }}`, `{{ risk_rating }}`, `{{ counts['Critical'] }}`
-(High/Medium/Low/Informational), and a findings loop:
+**1. Your own report format — "clone-fill" (recommended).** Want each finding
+written into *your* template's exact finding layout — same fonts, same styling?
+Mark **one** example finding in your template with simple `[[markers]]` and the
+tool clones that block once per finding, preserving its formatting:
+
+```text
+[[finding]]
+[[title]]
+Vulnerability Description: [[description]]
+CVSS Scoring: [[cvss]]   ([[cvss_vector]])
+CWE ID: [[cwe]]      Severity: [[severity]]
+Affected URL: [[targets]]
+Proof of Concept: [[evidence]]
+Suggested Remediation: [[remediation]]
+References: [[references]]
+[[/finding]]
+```
+
+Put `[[finding]]` / `[[/finding]]` on their own lines around your example
+finding, drop the field markers where each value goes, and (optionally) add a
+summary-table row whose first cell contains `[[findings_row]]`. Document-level
+markers `[[client]]`, `[[date]]`, `[[assessor]]`, `[[risk_rating]]`,
+`[[total_findings]]`, `[[count_critical]]` … are filled once. Everything else in
+your document — cover, methodology, appendices, header/footer — is untouched.
+Field markers: `[[id]] [[title]] [[severity]] [[cvss]] [[cvss_vector]] [[cwe]]
+[[cve]] [[targets]] [[description]] [[evidence]] [[remediation]] [[references]]`.
+
+**2. Any company template (no setup) — "branding shell".** If your `.docx` has
+no markers or tags, the tool keeps the *entire* document and **appends the
+findings** as a new section in the document's own styles. Drop in any template
+and it just works.
+
+**3. Jinja2 field-filling — tagged template (docxtpl).** Add `{{ }}` placeholders
+for docxtpl-style filling. Start from
+[`examples/company_template.docx`](examples/company_template.docx). Placeholders:
+`{{ client }}`, `{{ title }}`, `{{ assessor }}`, `{{ date }}`, `{{ standard }}`,
+`{{ risk_rating }}`, `{{ counts['Critical'] }}` (High/Medium/Low/Informational),
+and a findings loop:
 
 ```jinja
 {% for f in findings %}

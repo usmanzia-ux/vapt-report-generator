@@ -93,9 +93,11 @@ def main(argv: List[str] | None = None) -> int:
                         help="Output format (default: pdf).")
     parser.add_argument("-o", "--output", help="Output file path.")
     parser.add_argument("-t", "--template",
-                        help="Custom template file for the report's look: .html.j2 "
-                             "(pdf/html), .docx (docx output, fills every field), or "
-                             ".pdf (reuses its cover page). Omit for the generic theme.")
+                        help="Custom template for the report's look: .html.j2 "
+                             "(pdf/html); .docx (docx — mark one example finding with "
+                             "[[markers]] to clone your exact format, or use {{ }} tags, "
+                             "or any untagged template as a branded shell); .pdf "
+                             "(reuses its cover page). Omit for the generic theme.")
     parser.add_argument("--client", help="Override client name.")
     parser.add_argument("--title", help="Override report title.")
     parser.add_argument("--assessor", help="Override assessor name.")
