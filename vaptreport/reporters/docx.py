@@ -490,8 +490,41 @@ def _autodetect_block(doc):
     return start, end
 
 
-def _fill_finding_block(block, f) -> None:
+def _strip_numbering(p) -> None:
+    """Remove list numbering/bullet from a paragraph so a single value doesn't
+    inherit a stray continuing number (e.g. '4. <evidence>')."""
+    from docx.oxml.ns import qn
+
+    pPr = p._p.find(qn("w:pPr"))
+    if pPr is not None:
+        numPr = pPr.find(qn("w:numPr"))
+        if numPr is not None:
+            pPr.remove(numPr)
+
+
+def _remove(p) -> None:
+    parent = p._p.getparent()
+    if parent is not None:
+        parent.remove(p._p)
+
+
+def _collapse_blanks(block) -> None:
+    """Collapse runs of consecutive empty paragraphs down to a single one."""
+    prev_blank = False
+    for p in block:
+        if p._p.getparent() is None:
+            continue
+        blank = not p.text.strip()
+        if blank and prev_blank:
+            _remove(p)
+        else:
+            prev_blank = blank
+
+
+def _fill_finding_block(block, f, page_break: bool = False) -> None:
     """Fill one cloned finding block (list of Paragraphs) with finding ``f``."""
+    if page_break:
+        block[0].paragraph_format.page_break_before = True
     _set_keep(block[0], f.title or "N/A")
     i = 1
     while i < len(block):
@@ -510,9 +543,11 @@ def _fill_finding_block(block, f) -> None:
             continue
         if ("remediation" in low or "recommendation" in low) and low.endswith(":"):
             _set_keep(block[i + 1], (f.remediation or "N/A").strip())
+            # drop any leftover example paragraphs (2nd remediation line + blanks)
+            # between the value and the References line
             j = i + 2
             while j < len(block) and not block[j].text.strip().lower().startswith("reference"):
-                _set_keep(block[j], "")
+                _remove(block[j])
                 j += 1
             i = j
             continue
@@ -526,13 +561,15 @@ def _fill_finding_block(block, f) -> None:
             _set_inline(p, ", ".join(f.references) if f.references else "N/A")
         elif p.style.name == "List Paragraph":
             _set_keep(p, (f.evidence or "N/A").replace("\r", " ").strip())
+            _strip_numbering(p)            # no stray "4." in front of the PoC text
             j = i + 1
             while j < len(block) and block[j].style.name == "List Paragraph":
-                block[j]._p.getparent().remove(block[j]._p)
+                _remove(block[j])
                 j += 1
             i = j
             continue
         i += 1
+    _collapse_blanks(block)
 
 
 def _render_autofill(report: Report, output: str, template_path: str, block) -> str:
@@ -560,7 +597,8 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
         for e in new:
             ref.addnext(e)
             ref = e
-        _fill_finding_block([Paragraph(e, body) for e in new], f)
+        # each subsequent finding starts on a fresh page
+        _fill_finding_block([Paragraph(e, body) for e in new], f, page_break=True)
         prev = new[-1]
 
     # summary table: the widest "findings" table (most rows / 4 cols) gets refreshed
