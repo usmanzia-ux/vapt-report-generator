@@ -307,6 +307,28 @@ def test_custom_template_not_supported_for_xlsx(tmp_path):
         reporters.render(report, "xlsx", str(tmp_path / "r.xlsx"), template="x.j2")
 
 
+def test_pdf_passed_as_template_gives_clear_error(tmp_path):
+    from vaptreport import reporters
+
+    # A user pointing --template at their company report PDF must get a helpful
+    # message, not a raw UTF-8 decode crash.
+    pdf = tmp_path / "company template.pdf"
+    pdf.write_bytes(b"%PDF-1.7\n\xb5\xb5\xb5 binary stream \x00\x01")
+    report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json")))
+    with pytest.raises(ValueError, match="PDF"):
+        reporters.render(report, "html", str(tmp_path / "r.html"), template=str(pdf))
+
+
+def test_binary_template_gives_clear_error(tmp_path):
+    from vaptreport import reporters
+
+    blob = tmp_path / "logo.png"
+    blob.write_bytes(b"\x89PNG\r\n\x1a\n\xb5\xff\x00not text")
+    report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json")))
+    with pytest.raises(ValueError, match="UTF-8 text"):
+        reporters.render(report, "html", str(tmp_path / "r.html"), template=str(blob))
+
+
 def test_render_pdf(tmp_path):
     pytest.importorskip("weasyprint")
     from vaptreport import reporters

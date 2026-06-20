@@ -21,6 +21,33 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
 _DEFAULT_TEMPLATE = "report.html.j2"
 
 
+def _validate_template(path: Path) -> None:
+    """Fail early with a clear message if the template isn't a text/Jinja2 file.
+
+    A custom template must be an HTML/Jinja2 source file. Users sometimes pass a
+    finished document (commonly a ``.pdf`` of their company report) expecting it
+    to be used as the layout — but a PDF is rendered output, not a reusable
+    template, and feeding it to Jinja2 only produces a cryptic UTF-8 decode
+    crash. Detect that here and explain what's actually needed.
+    """
+    raw = path.read_bytes()
+    if raw[:5] == b"%PDF-":
+        raise ValueError(
+            f"template '{path.name}' is a PDF, but --template needs an HTML/Jinja2 "
+            "file (.html or .html.j2). A PDF is a finished document, not a reusable "
+            "layout, so it can't be used as a template. Build one from "
+            "examples/custom_template.html.j2 (copy it, restyle to your branding)."
+        )
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError(
+            f"template '{path.name}' is not a UTF-8 text file. --template needs an "
+            "HTML/Jinja2 template (.html/.html.j2), not a binary document. "
+            "See examples/custom_template.html.j2 for a starting point."
+        ) from None
+
+
 def _env(search_dir: Path) -> Environment:
     return Environment(
         loader=FileSystemLoader(str(search_dir)),
@@ -40,6 +67,7 @@ def render_string(report: Report, template_path: Optional[str] = None) -> str:
         p = Path(template_path)
         if not p.exists():
             raise FileNotFoundError(f"Template not found: {template_path}")
+        _validate_template(p)
         env = _env(p.resolve().parent)
         template = env.get_template(p.name)
     else:
