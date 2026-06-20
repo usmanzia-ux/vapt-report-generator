@@ -183,17 +183,26 @@ and you get pixel-consistent branded reports every time.
 
 ### Word (.docx) templates
 
-Most firms keep their report template as a **Word document**. Build it once with
-Jinja2 placeholders and the tool fills every field, outputting a `.docx`:
+Most firms keep their report template as a **Word document**. Point `-t` at it
+and `-f docx` — it works two ways, chosen automatically:
 
 ```bash
 vaptreport scan.nessus -f docx -t company_template.docx -o report.docx
 ```
 
-Start from [`examples/company_template.docx`](examples/company_template.docx).
-The placeholders available are `{{ client }}`, `{{ title }}`, `{{ assessor }}`,
-`{{ date }}`, `{{ standard }}`, `{{ risk_rating }}`, `{{ counts['Critical'] }}`
-(High/Medium/Low/Informational), and a findings loop:
+**1. Any company template (no setup) — "branding shell".** If your `.docx` has
+no special tags (i.e. it's just your normal report template), the tool keeps the
+*entire* document — cover, intro, scope, methodology, header/footer, fonts,
+logo, branding — and **appends the findings** as a new section rendered in the
+document's own styles. Drop in any company template and it just works.
+
+**2. Precise field-filling — tagged template.** For exact control over where
+each value lands, add Jinja2 placeholders to your template and the tool fills
+them in place. Start from
+[`examples/company_template.docx`](examples/company_template.docx). Placeholders:
+`{{ client }}`, `{{ title }}`, `{{ assessor }}`, `{{ date }}`, `{{ standard }}`,
+`{{ risk_rating }}`, `{{ counts['Critical'] }}` (High/Medium/Low/Informational),
+and a findings loop:
 
 ```jinja
 {% for f in findings %}

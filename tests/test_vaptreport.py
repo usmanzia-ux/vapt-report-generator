@@ -363,7 +363,7 @@ def test_render_docx_default(tmp_path):
     report = Report(findings=findings).finalize()
     out = reporters.render(report, "docx", str(tmp_path / "r.docx"))
     text = _docx_text(out)
-    assert "Findings Summary" in text
+    assert "Summary of Vulnerability Findings" in text
     assert "SQL Injection" in text  # a finding from the sample
 
 
@@ -380,8 +380,8 @@ def test_render_docx_with_company_template(tmp_path):
     assert "{{" not in text and "{%" not in text  # no unrendered placeholders
 
 
-def test_docx_template_without_placeholders_errors(tmp_path):
-    pytest.importorskip("docxtpl")
+def test_docx_untagged_template_becomes_branding_shell(tmp_path):
+    pytest.importorskip("docx")
     from docx import Document
     from vaptreport import reporters
 
@@ -389,12 +389,18 @@ def test_docx_template_without_placeholders_errors(tmp_path):
     plain = tmp_path / "template.docx"
     d = Document()
     d.add_heading("OWIT Global — Penetration Test Report", level=0)
-    d.add_paragraph("This is our standard report layout.")
+    d.add_paragraph("This is our standard report layout and branding.")
     d.save(str(plain))
 
     report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json"))).finalize()
-    with pytest.raises(ValueError, match="no placeholders"):
-        reporters.render(report, "docx", str(tmp_path / "out.docx"), template=str(plain))
+    out = reporters.render(report, "docx", str(tmp_path / "out.docx"), template=str(plain))
+    text = _docx_text(out)
+    # The template's own content is preserved…
+    assert "OWIT Global — Penetration Test Report" in text
+    assert "standard report layout" in text
+    # …and the findings are appended in a new section.
+    assert "Summary of Vulnerability Findings" in text
+    assert "SQL Injection" in text
 
 
 def test_docx_template_must_be_docx(tmp_path):
