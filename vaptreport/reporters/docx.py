@@ -263,7 +263,7 @@ def _finding_markers(f, sn: int) -> dict:
     return {
         "sn": str(sn),
         "id": f.finding_id,
-        "title": f.title or "Untitled finding",
+        "title": f.title or "N/A",
         "severity": f.severity.value,
         "cvss": cvss,
         "cvss_vector": f.cvss_vector or "N/A",
@@ -492,7 +492,7 @@ def _autodetect_block(doc):
 
 def _fill_finding_block(block, f) -> None:
     """Fill one cloned finding block (list of Paragraphs) with finding ``f``."""
-    _set_keep(block[0], f.title or "Untitled finding")
+    _set_keep(block[0], f.title or "N/A")
     i = 1
     while i < len(block):
         p = block[i]
@@ -525,7 +525,7 @@ def _fill_finding_block(block, f) -> None:
         elif low.startswith("reference"):
             _set_inline(p, ", ".join(f.references) if f.references else "N/A")
         elif p.style.name == "List Paragraph":
-            _set_keep(p, (f.evidence or "Refer to the description above.").replace("\r", " ").strip())
+            _set_keep(p, (f.evidence or "N/A").replace("\r", " ").strip())
             j = i + 1
             while j < len(block) and block[j].style.name == "List Paragraph":
                 block[j]._p.getparent().remove(block[j]._p)
@@ -576,7 +576,7 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
             _set_keep(c[0].paragraphs[0], str(sn))
             _set_keep(c[1].paragraphs[0], f.title)
             _set_keep(c[2].paragraphs[0], f.severity.value)
-            _set_keep(c[3].paragraphs[0], (f.description or "")[:200])
+            _set_keep(c[3].paragraphs[0], (f.description or "N/A")[:200])
 
     doc.save(output)
     return output
