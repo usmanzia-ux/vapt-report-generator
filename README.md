@@ -190,10 +190,24 @@ and `-f docx` — it works two ways, chosen automatically:
 vaptreport scan.nessus -f docx -t company_template.docx -o report.docx
 ```
 
-**1. Your own report format — "clone-fill" (recommended).** Want each finding
-written into *your* template's exact finding layout — same fonts, same styling?
-Mark **one** example finding in your template with simple `[[markers]]` and the
-tool clones that block once per finding, preserving its formatting:
+**1. Just use your template — "auto-fill" (zero setup).** If your `.docx` has a
+"Vulnerability Technical Details" (or "Detailed Findings") section with one
+**example finding** that uses normal labels (`Vulnerability Description:`,
+`CVSS Scoring:`, `CWE ID:`, `Severity:`, `Affected URL:`, `Suggested
+Remediation:`, `References:`), the tool **detects that example, removes it, and
+writes every real finding in its exact place and formatting** — and refreshes
+the summary findings table too. Nothing is appended outside the template:
+
+```bash
+vaptreport scan.pdf -f docx -t your_company_template.docx -o report.docx
+```
+
+Want the PDF in the same format? Use `-f pdf -t your_company_template.docx` —
+the tool builds the .docx and converts it to PDF with LibreOffice (`soffice`).
+
+**2. Explicit control — "clone-fill" with markers.** For precise control over
+where each value lands, mark **one** example finding with simple `[[markers]]`
+and the tool clones that block once per finding, preserving its formatting:
 
 ```text
 [[finding]]
@@ -222,12 +236,11 @@ Field markers: `[[id]] [[title]] [[severity]] [[cvss]] [[cvss_vector]] [[cwe]]
 > fills each marker in place and preserves that run's formatting, so a bold
 > label stays bold and the value keeps the value's styling.
 
-**2. Any company template (no setup) — "branding shell".** If your `.docx` has
-no markers or tags, the tool keeps the *entire* document and **appends the
-findings** as a new section in the document's own styles. Drop in any template
-and it just works.
+**3. Fallback — "branding shell".** If no example finding block can be detected
+and there are no markers/tags, the tool keeps the *entire* document and
+**appends the findings** as a new section in the document's own styles.
 
-**3. Jinja2 field-filling — tagged template (docxtpl).** Add `{{ }}` placeholders
+**4. Jinja2 field-filling — tagged template (docxtpl).** Add `{{ }}` placeholders
 for docxtpl-style filling. Start from
 [`examples/company_template.docx`](examples/company_template.docx). Placeholders:
 `{{ client }}`, `{{ title }}`, `{{ assessor }}`, `{{ date }}`, `{{ standard }}`,

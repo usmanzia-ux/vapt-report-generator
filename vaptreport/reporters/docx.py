@@ -263,7 +263,7 @@ def _finding_markers(f, sn: int) -> dict:
     return {
         "sn": str(sn),
         "id": f.finding_id,
-        "title": f.title or "Untitled finding",
+        "title": f.title or "N/A",
         "severity": f.severity.value,
         "cvss": cvss,
         "cvss_vector": f.cvss_vector or "N/A",
@@ -399,14 +399,197 @@ def _render_clone_fill(report: Report, output: str, template_path: str) -> str:
     return output
 
 
+# ---------------------------------------------------------------------------
+# Auto-fill mode: detect the template's OWN example finding block (no markers,
+# no tags) and replicate it per finding, in place, in the exact formatting.
+# This is what makes a plain company report template "just work": the example
+# finding under a "Technical Details"/"Findings" heading is recognised by its
+# field labels (Description / CVSS / CWE / Severity / Affected / Remediation /
+# References), cloned once per finding and filled — keeping everything inside
+# the template instead of appending below it.
+# ---------------------------------------------------------------------------
+_HEADING1 = ("Heading 1", "Title", "Style1")
+_HEADING_SUB = ("Heading 2", "Heading 3", "Heading 4", "Style2", "Style3")
+_SECTION_KEYS = ("technical detail", "detailed finding", "vulnerability detail",
+                 "findings detail", "finding detail")
+
+
+def _is_h1(p) -> bool:
+    return p.style.name.startswith(("Heading 1", "Style1")) or p.style.name == "Title"
+
+
+def _set_keep(p, text: str) -> None:
+    """Value-only paragraph: set text, keep the first run's font + paragraph style."""
+    if p.runs:
+        p.runs[0].text = text
+        for r in p.runs[1:]:
+            r.text = ""
+    else:
+        p.add_run(text)
+
+
+def _set_inline(p, value: str) -> None:
+    """'Label: value' paragraph: keep the bold label + colon, replace the value."""
+    runs = p.runs
+    ci = next((i for i, r in enumerate(runs) if ":" in r.text), None)
+    if ci is None:
+        _set_keep(p, value)
+        return
+    if ci + 1 < len(runs):
+        runs[ci + 1].text = " " + value
+        for r in runs[ci + 2:]:
+            r.text = ""
+    else:
+        p.add_run(" " + value)
+
+
+def _fill_affected(p, targets: str) -> None:
+    from docx.oxml.ns import qn
+
+    for hl in p._p.findall(qn("w:hyperlink")):
+        p._p.remove(hl)
+    runs = p.runs
+    nl = next((i for i, r in enumerate(runs) if "\n" in r.text), len(runs))
+    ci = next((i for i, r in enumerate(runs) if ":" in r.text), 0)
+    placed = False
+    for i in range(ci + 1, nl):
+        if not placed:
+            runs[i].text = " " + targets
+            placed = True
+        else:
+            runs[i].text = ""
+    if not placed:
+        if ci + 1 <= len(runs) - 1:
+            runs[ci + 1].text = " " + targets
+        else:
+            p.add_run(" " + targets)
+
+
+def _autodetect_block(doc):
+    """Return (start, end) paragraph indices of the example finding block, or None."""
+    ps = doc.paragraphs
+    tech = next((i for i, p in enumerate(ps)
+                 if _is_h1(p) and any(k in p.text.lower() for k in _SECTION_KEYS)), None)
+    if tech is None:
+        return None
+    start = next((i for i in range(tech + 1, len(ps))
+                  if ps[i].text.strip() and ps[i].style.name in _HEADING_SUB), None)
+    if start is None:
+        return None
+    end = len(ps) - 1
+    for i in range(start + 1, len(ps)):
+        if _is_h1(ps[i]) or ps[i].text.strip().lower().startswith("appendix"):
+            end = i - 1
+            break
+    while end > start and not ps[end].text.strip():
+        end -= 1
+    # require at least a couple of recognisable field labels to be confident
+    labels = " ".join(ps[i].text.lower() for i in range(start, end + 1))
+    if sum(k in labels for k in ("description", "severity", "remediation", "cvss", "cwe")) < 2:
+        return None
+    return start, end
+
+
+def _fill_finding_block(block, f) -> None:
+    """Fill one cloned finding block (list of Paragraphs) with finding ``f``."""
+    _set_keep(block[0], f.title or "N/A")
+    i = 1
+    while i < len(block):
+        p = block[i]
+        low = p.text.strip().lower()
+        if low.endswith("description:"):
+            _set_keep(block[i + 1], (f.description or "N/A").strip())
+            i += 2
+            continue
+        if low.startswith("cvss") and low.endswith(":"):
+            cv = f"{f.cvss_score:.1f}" if f.cvss_score is not None else "N/A"
+            if f.cvss_vector:
+                cv += f"  ({f.cvss_vector})"
+            _set_keep(block[i + 1], cv)
+            i += 2
+            continue
+        if ("remediation" in low or "recommendation" in low) and low.endswith(":"):
+            _set_keep(block[i + 1], (f.remediation or "N/A").strip())
+            j = i + 2
+            while j < len(block) and not block[j].text.strip().lower().startswith("reference"):
+                _set_keep(block[j], "")
+                j += 1
+            i = j
+            continue
+        if low.startswith("cwe"):
+            _set_inline(p, f.cwe or "N/A")
+        elif low.startswith("severity"):
+            _set_inline(p, f.severity.value)
+        elif low.startswith("affected"):
+            _fill_affected(p, ", ".join(t.label() for t in f.targets) or "N/A")
+        elif low.startswith("reference"):
+            _set_inline(p, ", ".join(f.references) if f.references else "N/A")
+        elif p.style.name == "List Paragraph":
+            _set_keep(p, (f.evidence or "N/A").replace("\r", " ").strip())
+            j = i + 1
+            while j < len(block) and block[j].style.name == "List Paragraph":
+                block[j]._p.getparent().remove(block[j]._p)
+                j += 1
+            i = j
+            continue
+        i += 1
+
+
+def _render_autofill(report: Report, output: str, template_path: str, block) -> str:
+    """Clone+fill the detected example finding block per finding, and refresh the
+    summary table, keeping everything inside the template."""
+    import copy
+
+    from docx import Document
+    from docx.text.paragraph import Paragraph
+
+    doc = Document(template_path)
+    body = doc._body
+    findings = report.findings
+
+    ps = doc.paragraphs
+    start, end = block
+    block_els = [ps[i]._p for i in range(start, end + 1)]
+    template_block = [copy.deepcopy(e) for e in block_els]
+
+    _fill_finding_block([Paragraph(e, body) for e in block_els], findings[0])
+    prev = block_els[-1]
+    for f in findings[1:]:
+        new = [copy.deepcopy(e) for e in template_block]
+        ref = prev
+        for e in new:
+            ref.addnext(e)
+            ref = e
+        _fill_finding_block([Paragraph(e, body) for e in new], f)
+        prev = new[-1]
+
+    # summary table: the widest "findings" table (most rows / 4 cols) gets refreshed
+    cand = [t for t in doc.tables if len(t.columns) == 4 and t.rows]
+    if cand:
+        tbl = max(cand, key=lambda t: len(t.rows))
+        tmpl_tr = copy.deepcopy(tbl.rows[0]._tr)
+        for row in list(tbl.rows):
+            row._tr.getparent().remove(row._tr)
+        for sn, f in enumerate(findings, 1):
+            tbl._tbl.append(copy.deepcopy(tmpl_tr))
+            c = tbl.rows[-1].cells
+            _set_keep(c[0].paragraphs[0], str(sn))
+            _set_keep(c[1].paragraphs[0], f.title)
+            _set_keep(c[2].paragraphs[0], f.severity.value)
+            _set_keep(c[3].paragraphs[0], (f.description or "N/A")[:200])
+
+    doc.save(output)
+    return output
+
+
 def render(report: Report, output: str, template_path: Optional[str] = None) -> str:
     """Render ``report`` to a .docx file.
 
     * no template               → default professional layout
-    * template with [[markers]]  → clone-fill: replicate the marked example
-      finding block per finding, preserving the template's exact formatting
+    * template with [[markers]]  → clone-fill the marked example block
     * template with {{ }} tags   → precise fill via docxtpl
-    * template without any tags  → branding shell: keep it, append the findings
+    * template with a detectable example finding block → auto-fill it in place
+    * otherwise                  → branding shell: keep it, append the findings
     """
     if not template_path:
         return _render_default(report, output)
@@ -423,4 +606,12 @@ def render(report: Report, output: str, template_path: Optional[str] = None) -> 
         return _render_clone_fill(report, output, template_path)
     if _template_has_placeholders(template_path):
         return _render_template(report, output, template_path)
+
+    if report.findings:
+        from docx import Document
+
+        block = _autodetect_block(Document(template_path))
+        if block is not None:
+            return _render_autofill(report, output, template_path, block)
+
     return _render_branding_shell(report, output, template_path)
