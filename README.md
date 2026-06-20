@@ -24,14 +24,17 @@ found the issue.
   Acunetix, and a generic JSON/YAML findings format. Mix several scanners into
   one consolidated report.
 - **Auto-detection** — point it at a file; it figures out the format.
+- **Interactive wizard** — run `vaptreport` with no arguments for a guided,
+  styled shell flow: pick input → pick template → choose format → name it.
 - **CVSS v3.1 engine** — a spec-compliant base-score calculator (not a lookup
   table) derives scores from vectors and maps them to severity ratings.
 - **Smart de-duplication** — the same Nessus plugin across many hosts becomes a
   single finding with all affected targets aggregated.
-- **Three output formats** — PDF (default, via WeasyPrint), print-ready HTML,
-  and a styled multi-sheet Excel workbook (Cover / Findings / Summary).
-- **Custom templates** — bring your own HTML/Jinja2 template (`-t`) to match a
-  client's or your firm's branding; falls back to a polished generic theme.
+- **Four output formats** — PDF (default, via WeasyPrint), **Word (.docx)**,
+  print-ready HTML, and a styled multi-sheet Excel workbook.
+- **Bring your own template** — match your firm's branding with an HTML/Jinja2
+  template *or* a **Word .docx template** that fills every field; a PDF template
+  has its cover page reused. Falls back to a polished generic theme.
 - **Safe by default** — report output is HTML-escaped, so an XSS payload sitting
   in a scanner's evidence field can't execute when the report is opened.
 - **Executive + technical** — cover page, severity summary, findings overview
@@ -49,6 +52,9 @@ pip install -e .
 
 # Optional: PDF support (needs WeasyPrint system libs)
 pip install -e ".[pdf]"
+
+# Optional: Word (.docx) input templates and output
+pip install -e ".[docx]"
 ```
 
 ---
@@ -56,6 +62,9 @@ pip install -e ".[pdf]"
 ## Quick start
 
 ```bash
+# Guided interactive wizard — just run it with no arguments
+vaptreport
+
 # Default output is PDF — what most clients actually want
 vaptreport examples/sample_findings.json -o report.pdf
 
@@ -66,14 +75,31 @@ vaptreport acunetix_developer_report.pdf -o report.pdf
 vaptreport nmap.xml scan.nessus nuclei.jsonl burp.xml zap.json \
     -o engagement.pdf --client "Example Corporation"
 
-# Use your company's own branded template
+# Use your company's own branded template (HTML/Jinja2 for pdf/html…)
 vaptreport examples/sample_nessus.nessus -t examples/custom_template.html.j2 \
     -o branded_report.pdf
+
+# …or a Word .docx template that fills every field, output as .docx
+vaptreport examples/sample_nessus.nessus -f docx \
+    -t examples/company_template.docx -o branded_report.docx
 
 # Other formats: HTML (web preview) and a styled Excel workbook
 vaptreport examples/sample_nessus.nessus -f html -o report.html
 vaptreport examples/sample_nessus.nessus -f xlsx -o report.xlsx
 ```
+
+### Interactive mode
+
+Run `vaptreport` with no input files (or `vaptreport -i`) and a guided,
+styled wizard walks you through the whole thing — no flags to remember:
+
+1. choose the scan / findings file(s)
+2. choose a template — the default theme or **your own company template**
+3. watch the report build with live progress
+4. choose the output format (**PDF / Word / HTML / Excel**)
+5. name the output file — done
+
+It's the same engine as the flags below, just collected one question at a time.
 
 Example terminal output:
 
@@ -124,16 +150,19 @@ files, in any combination.
 ## CLI reference
 
 ```
-vaptreport INPUT [INPUT ...] [options]
+vaptreport [INPUT ...] [options]      # omit INPUT to launch the wizard
 
-  -f, --format {pdf,html,xlsx}   Output format (default: pdf)
-  -o, --output PATH              Output file path
-  -t, --template PATH            Custom HTML/Jinja2 template for pdf/html output
-      --client NAME              Override client name
-      --title TITLE              Override report title
-      --assessor NAME            Override assessor name
-      --id-prefix PREFIX         Finding ID prefix (default: VR)
-  -V, --version                  Show version
+  -i, --interactive                   Launch the guided interactive wizard
+  -f, --format {pdf,html,docx,xlsx}   Output format (default: pdf)
+  -o, --output PATH                   Output file path
+  -t, --template PATH                 Custom template: .html.j2 (pdf/html),
+                                      .docx (docx, fills every field),
+                                      or .pdf (reuses its cover page)
+      --client NAME                   Override client name
+      --title TITLE                   Override report title
+      --assessor NAME                 Override assessor name
+      --id-prefix PREFIX              Finding ID prefix (default: VR)
+  -V, --version                       Show version
 ```
 
 ## Custom templates (use your company's branding)
@@ -152,10 +181,37 @@ severity counts, CVSS, targets, …) and shows a fully restyled corporate theme
 with letterhead and page numbers. Copy it, drop in your colours/logo/wording,
 and you get pixel-consistent branded reports every time.
 
-> **Note on PDF "templates":** a finished PDF can't be used directly as a
-> fill-in template (PDFs aren't editable forms). Instead, reproduce the layout
-> once as an HTML/Jinja template — it's reusable, version-controllable, and
-> renders identically on every report.
+### Word (.docx) templates
+
+Most firms keep their report template as a **Word document**. Build it once with
+Jinja2 placeholders and the tool fills every field, outputting a `.docx`:
+
+```bash
+vaptreport scan.nessus -f docx -t company_template.docx -o report.docx
+```
+
+Start from [`examples/company_template.docx`](examples/company_template.docx).
+The placeholders available are `{{ client }}`, `{{ title }}`, `{{ assessor }}`,
+`{{ date }}`, `{{ standard }}`, `{{ risk_rating }}`, `{{ counts['Critical'] }}`
+(High/Medium/Low/Informational), and a findings loop:
+
+```jinja
+{% for f in findings %}
+{{ f.finding_id }} — {{ f.title }} [{{ f.severity.value }}]
+CVSS {{ f.cvss_score }} · {{ f.cwe }} · Source: {{ f.source }}
+{{ f.description }}
+{{ f.remediation }}
+{% endfor %}
+```
+
+Requires the docx extra: `pip install 'vapt-report-generator[docx]'`.
+
+> **What about a PDF template?** A finished PDF has no fields to fill (it's not
+> an editable form), so it can't be field-filled like a `.docx`/`.html.j2`. When
+> you pass a `.pdf` to `-t` with `-f pdf`, the tool does the next best thing:
+> it **reuses the PDF's first page as the report cover/letterhead** and appends
+> the findings in the default style. For true field-by-field branding, use a
+> `.docx` or `.html.j2` template.
 
 ---
 
@@ -233,7 +289,7 @@ pytest -v
 ## Roadmap
 
 - [x] Custom HTML/Jinja2 template support (`-t/--template`)
-- [x] Nuclei, Burp Suite, and OWASP ZAP parsers
+
 - [ ] Trend/delta mode (compare two scans to show fixed vs. new findings)
 - [ ] Markdown output for GitHub issues
 
