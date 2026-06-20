@@ -446,6 +446,43 @@ def test_docx_clone_fill_replicates_marked_block(tmp_path):
     assert "[[" not in tbltext
 
 
+def test_docx_autofill_detects_example_block(tmp_path):
+    pytest.importorskip("docx")
+    from docx import Document
+    from vaptreport import reporters
+
+    # A plain template (NO markers, NO tags) with an example finding under a
+    # "Technical Details" heading — the tool should fill it in place, not append.
+    tpl = tmp_path / "plain.docx"
+    d = Document()
+    d.add_heading("Vulnerability Technical Details", level=1)
+    d.add_heading("Example Finding Title", level=2)
+    d.add_paragraph("Vulnerability Description:")
+    d.add_paragraph("example description text")
+    d.add_paragraph("CWE ID: N/A")
+    d.add_paragraph("Severity: LOW")
+    d.add_paragraph("Suggested Remediation:")
+    d.add_paragraph("example remediation text")
+    d.add_paragraph("References: N/A")
+    d.add_heading("Appendix A", level=1)
+    d.add_paragraph("static appendix content")
+    d.save(str(tpl))
+
+    findings = detect_and_parse(str(EXAMPLES / "sample_findings.json"))  # 5 findings
+    report = Report(findings=findings, client="OWIT Global").finalize()
+    out = reporters.render(report, "docx", str(tmp_path / "out.docx"), template=str(tpl))
+
+    res = Document(out)
+    text = "\n".join(p.text for p in res.paragraphs)
+    titles = [p.text for p in res.paragraphs if p.style.name.startswith("Heading 2") and p.text.strip()]
+    assert len(titles) == 5                      # one filled block per finding
+    assert "Example Finding Title" not in text   # demo finding replaced
+    assert "example description text" not in text
+    assert "SQL Injection in Login Form" in text
+    assert "Appendix A" in text                  # appendix preserved
+    assert "static appendix content" in text
+
+
 def test_docx_template_must_be_docx(tmp_path):
     pytest.importorskip("docx")
     from vaptreport import reporters
