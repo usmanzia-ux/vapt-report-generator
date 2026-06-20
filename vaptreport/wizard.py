@@ -17,8 +17,14 @@ identical — only the input collection differs.
 from __future__ import annotations
 
 import glob
+import os
 from pathlib import Path
 from typing import List, Optional
+
+try:  # tab-completion for file paths; harmless if unavailable
+    import readline
+except ImportError:  # pragma: no cover - Windows without pyreadline
+    readline = None
 
 from rich.align import Align
 from rich.console import Console
@@ -46,28 +52,67 @@ def _banner() -> None:
     console.print()
 
 
+def _enable_path_completion() -> None:
+    """Turn on Tab-completion of file paths for the prompts in this session."""
+    if readline is None:
+        return
+
+    def _complete(text: str, state: int):
+        # Expand ~ and complete against the filesystem; add '/' to dirs.
+        stub = os.path.expanduser(text)
+        matches = glob.glob(stub + "*")
+        matches = [m + "/" if os.path.isdir(m) else m for m in matches]
+        return matches[state] if state < len(matches) else None
+
+    readline.set_completer_delims(" \t\n")
+    readline.set_completer(_complete)
+    readline.parse_and_bind("tab: complete")
+
+
+def _discover_inputs() -> List[str]:
+    """Find supported scan/findings files in the current directory."""
+    found = sorted(
+        f for f in os.listdir(".")
+        if os.path.isfile(f) and f.lower().endswith(_SUPPORTED_INPUT)
+    )
+    return found
+
+
 def _step(n: int, total: int, label: str) -> None:
     console.print(f"[bold cyan]Step {n}/{total}[/bold cyan]  [bold]{label}[/bold]")
 
 
 def _prompt_inputs() -> List[str]:
-    """Ask for one or more scan files; accept globs and validate existence."""
+    """Ask for scan files. Auto-lists files in the current folder so the user
+    can just pick a number; also accepts typed paths/globs (with Tab-completion)."""
+    discovered = _discover_inputs()
+    if discovered:
+        console.print("  [dim]Supported files found in this folder:[/dim]")
+        for i, f in enumerate(discovered, 1):
+            console.print(f"    [cyan]{i}[/cyan]) {f}")
+        hint = "number(s) above, or a path/glob"
+    else:
+        console.print("  [dim]No scan files detected in this folder.[/dim]")
+        hint = "a path/glob (Tab completes)"
+
     while True:
-        raw = Prompt.ask(
-            "  [green]Scan / findings file(s)[/green] "
-            "[dim](space-separated; globs ok, e.g. scans/*.nessus)[/dim]"
-        )
-        tokens = raw.split()
+        raw = Prompt.ask(f"  [green]Choose input[/green] [dim]({hint}; "
+                         "space-separated for several)[/dim]").strip()
+        if not raw:
+            console.print("  [red]Please enter at least one file or number.[/red]")
+            continue
+
         files: List[str] = []
-        for tok in tokens:
-            matches = glob.glob(tok)
-            files.extend(matches if matches else [tok])
+        for tok in raw.split():
+            if tok.isdigit() and discovered and 1 <= int(tok) <= len(discovered):
+                files.append(discovered[int(tok) - 1])
+            else:
+                expanded = os.path.expanduser(tok)
+                matches = glob.glob(expanded)
+                files.extend(matches if matches else [expanded])
 
         missing = [f for f in files if not Path(f).exists()]
         bad_ext = [f for f in files if not f.lower().endswith(_SUPPORTED_INPUT)]
-        if not files:
-            console.print("  [red]Please enter at least one file.[/red]")
-            continue
         if missing:
             console.print(f"  [red]Not found:[/red] {', '.join(missing)}")
             continue
@@ -89,8 +134,26 @@ def _prompt_template() -> Optional[str]:
     if choice == "1":
         console.print("  [green]✓[/green] using the default theme")
         return None
+
+    templates = sorted(
+        f for f in os.listdir(".")
+        if os.path.isfile(f) and f.lower().endswith((".docx", ".html.j2", ".j2", ".html", ".pdf"))
+    )
+    if templates:
+        console.print("  [dim]Template files found in this folder:[/dim]")
+        for i, f in enumerate(templates, 1):
+            console.print(f"    [cyan]{i}[/cyan]) {f}")
+
     while True:
-        path = Prompt.ask("  [green]Path to your template[/green]").strip().strip('"').strip("'")
+        raw = Prompt.ask("  [green]Template number or path[/green] "
+                         "[dim](Tab completes)[/dim]").strip().strip('"').strip("'")
+        if raw.isdigit() and templates and 1 <= int(raw) <= len(templates):
+            path = templates[int(raw) - 1]
+        else:
+            path = os.path.expanduser(raw)
+        if not path:
+            console.print("  [red]Please enter a number or path.[/red]")
+            continue
         if not Path(path).exists():
             console.print(f"  [red]Not found:[/red] {path}")
             if not Confirm.ask("  Try again?", default=True):
@@ -177,6 +240,7 @@ def _summary_table(report: Report) -> Table:
 
 def run() -> int:
     """Drive the full interactive session. Returns a process exit code."""
+    _enable_path_completion()
     _banner()
     total = 5
 
