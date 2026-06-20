@@ -285,8 +285,15 @@ def run() -> int:
     use_template = template if _template_ok_for_format(template, fmt) else None
     console.print()
 
-    with console.status(f"[cyan]Rendering {fmt.upper()} report…[/cyan]", spinner="dots"):
-        path = reporters.render(report, fmt, output, template=use_template)
+    try:
+        with console.status(f"[cyan]Rendering {fmt.upper()} report…[/cyan]", spinner="dots"):
+            path = reporters.render(report, fmt, output, template=use_template)
+    except Exception as exc:  # noqa: BLE001 - show a clean message, not a traceback
+        console.print(Panel(f"[red]Could not render the report:[/red]\n{exc}",
+                            border_style="red", title="Error"))
+        if Confirm.ask("\n  Try again with different choices?", default=True):
+            return run()
+        return 2
 
     console.print(Panel(
         f"[green]✓ Report written:[/green] [bold]{path}[/bold]\n"

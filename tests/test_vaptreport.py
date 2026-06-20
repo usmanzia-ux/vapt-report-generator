@@ -380,6 +380,23 @@ def test_render_docx_with_company_template(tmp_path):
     assert "{{" not in text and "{%" not in text  # no unrendered placeholders
 
 
+def test_docx_template_without_placeholders_errors(tmp_path):
+    pytest.importorskip("docxtpl")
+    from docx import Document
+    from vaptreport import reporters
+
+    # A company template that is just a formatted doc with NO {{ }} / {% %} tags.
+    plain = tmp_path / "template.docx"
+    d = Document()
+    d.add_heading("OWIT Global — Penetration Test Report", level=0)
+    d.add_paragraph("This is our standard report layout.")
+    d.save(str(plain))
+
+    report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json"))).finalize()
+    with pytest.raises(ValueError, match="no placeholders"):
+        reporters.render(report, "docx", str(tmp_path / "out.docx"), template=str(plain))
+
+
 def test_docx_template_must_be_docx(tmp_path):
     pytest.importorskip("docx")
     from vaptreport import reporters

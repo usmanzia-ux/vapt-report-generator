@@ -50,6 +50,33 @@ def _context(report: Report) -> dict:
     }
 
 
+def _template_has_placeholders(template_path: str) -> bool:
+    """True if the .docx contains any Jinja2 tags ({{ }} or {% %}).
+
+    A template with no tags has nothing to fill — docxtpl would just copy it.
+    We scan body paragraphs, tables, and headers/footers (run text is rejoined
+    by python-docx, so split tags are still detected)."""
+    from docx import Document
+
+    doc = Document(template_path)
+
+    def _iter_text():
+        for p in doc.paragraphs:
+            yield p.text
+        for t in doc.tables:
+            for row in t.rows:
+                for cell in row.cells:
+                    for p in cell.paragraphs:
+                        yield p.text
+        for section in doc.sections:
+            for hf in (section.header, section.footer):
+                for p in hf.paragraphs:
+                    yield p.text
+
+    blob = "\n".join(_iter_text())
+    return "{{" in blob or "{%" in blob
+
+
 def _render_template(report: Report, output: str, template_path: str) -> str:
     """Fill a user-supplied .docx company template with the report data."""
     try:
@@ -59,6 +86,23 @@ def _render_template(report: Report, output: str, template_path: str) -> str:
             "DOCX output requires python-docx + docxtpl. Install with:\n"
             "    pip install 'vapt-report-generator[docx]'"
         ) from exc
+
+    if not _template_has_placeholders(template_path):
+        from pathlib import Path
+
+        raise ValueError(
+            f"template '{Path(template_path).name}' contains no placeholders, so "
+            "there is nothing to fill — the output would just be a copy of your "
+            "template. A .docx template must contain Jinja2 placeholders telling "
+            "the tool where each value goes, e.g. {{ client }}, {{ date }}, and a "
+            "findings loop:\n"
+            "    {% for f in findings %}\n"
+            "    {{ f.finding_id }} - {{ f.title }} [{{ f.severity.value }}]\n"
+            "    {{ f.description }}\n"
+            "    {% endfor %}\n"
+            "Copy examples/company_template.docx (already tagged) and restyle it, "
+            "or add these tags into your own template."
+        )
 
     doc = DocxTemplate(template_path)
     doc.render(_context(report))
