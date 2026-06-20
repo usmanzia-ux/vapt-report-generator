@@ -20,9 +20,9 @@ found the issue.
 
 ## Features
 
-- **Multi-source ingestion** — Nmap XML, Nessus `.nessus`, **Acunetix Developer
-  Report PDFs**, and a generic JSON/YAML findings format. Mix several inputs
-  into one report.
+- **Multi-source ingestion** — Nmap, Nessus, Nuclei, Burp Suite, OWASP ZAP,
+  Acunetix, and a generic JSON/YAML findings format. Mix several scanners into
+  one consolidated report.
 - **Auto-detection** — point it at a file; it figures out the format.
 - **Interactive wizard** — run `vaptreport` with no arguments for a guided,
   styled shell flow: pick input → pick template → choose format → name it.
@@ -71,8 +71,8 @@ vaptreport examples/sample_findings.json -o report.pdf
 # Ingest an Acunetix Developer Report PDF directly
 vaptreport acunetix_developer_report.pdf -o report.pdf
 
-# Combine an Nmap scan and manual findings into one PDF
-vaptreport examples/sample_nmap.xml examples/sample_findings.json \
+# Consolidate many scanners into ONE report
+vaptreport nmap.xml scan.nessus nuclei.jsonl burp.xml zap.json \
     -o engagement.pdf --client "Example Corporation"
 
 # Use your company's own branded template (HTML/Jinja2 for pdf/html…)
@@ -122,6 +122,28 @@ Overall risk rating: Critical
 
 ✓ Report written: report.pdf
 ```
+
+---
+
+## Supported scanner inputs
+
+The format is auto-detected from the file extension and content — just pass the
+files, in any combination.
+
+| Scanner            | Format to export            | Extension        | Notes |
+|--------------------|-----------------------------|------------------|-------|
+| **Nmap**           | XML (`-oX`)                 | `.xml`           | Open ports + NSE `vuln` script hits |
+| **Nessus**         | Nessus export               | `.nessus`        | Same plugin across hosts is merged |
+| **Nuclei**         | JSON-Lines (`-jsonl`)       | `.jsonl`/`.json` | CVSS/CWE/CVE from `classification` |
+| **Burp Suite**     | XML issue export            | `.xml`           | Same issue across paths is merged |
+| **OWASP ZAP**      | JSON or XML report          | `.json`/`.xml`   | Risk codes mapped to severity |
+| **Acunetix**       | Developer Report **PDF**    | `.pdf`           | Best-effort text extraction; XML is lossless if available |
+| **Manual / other** | Findings file (this schema) | `.json`/`.yaml`  | For findings no scanner produces |
+
+> **Why native exports, not PDFs?** Structured exports (XML/JSON) parse
+> losslessly and reliably. PDF layouts are fragile to parse, so PDF input is
+> reserved for Acunetix (where the report PDF is the common artifact). For every
+> other scanner, use its XML/JSON export.
 
 ---
 
@@ -231,11 +253,15 @@ See [`examples/`](examples/) for complete Nmap, Nessus, and findings samples.
 vaptreport/
 ├── models.py            # Finding / Report / Severity / Target  (shared model)
 ├── scoring.py           # CVSS v3.1 base-score calculator
-├── parsers/
-│   ├── nmap.py          # Nmap XML  -> Findings
-│   ├── nessus.py        # Nessus .nessus -> Findings (host-merged)
-│   ├── acunetix_pdf.py  # Acunetix Developer Report PDF -> Findings
-│   └── findings.py      # JSON/YAML  -> Findings  (also the canonical schema)
+├── parsers/             # one module per scanner; all normalise into Finding
+│   ├── nmap.py          # Nmap XML
+│   ├── nessus.py        # Nessus .nessus (host-merged)
+│   ├── nuclei.py        # Nuclei JSON / JSON-Lines (template-merged)
+│   ├── burp.py          # Burp Suite XML (path-merged)
+│   ├── zap.py           # OWASP ZAP JSON + XML
+│   ├── acunetix_pdf.py  # Acunetix Developer Report PDF
+│   ├── findings.py      # JSON/YAML — the canonical schema
+│   └── _util.py         # shared HTML-strip / URL / target helpers
 ├── reporters/
 │   ├── html.py          # Jinja2 -> HTML
 │   ├── pdf.py           # HTML -> PDF (WeasyPrint)
@@ -263,8 +289,7 @@ pytest -v
 ## Roadmap
 
 - [x] Custom HTML/Jinja2 template support (`-t/--template`)
-- [x] Interactive shell wizard, Word (.docx) input templates and output
-- [ ] Burp Suite XML and OWASP ZAP JSON parsers
+
 - [ ] Trend/delta mode (compare two scans to show fixed vs. new findings)
 - [ ] Markdown output for GitHub issues
 
