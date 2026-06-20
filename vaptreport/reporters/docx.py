@@ -1,19 +1,22 @@
 """Render a Report to a Microsoft Word (.docx) document.
 
-Three modes, chosen automatically:
+Four modes, chosen automatically from what the template contains:
 
-* **Default layout** — no template given: a clean professional report is built
-  from scratch with ``python-docx``.
+* **Clone-fill (recommended for your own report format)** — the user marks ONE
+  example finding in their template with simple ``[[markers]]`` between
+  ``[[finding]]`` and ``[[/finding]]`` (and optionally a summary-table row with
+  ``[[findings_row]]``). We deep-copy that example block/row once per finding —
+  preserving the company's exact fonts, styles and layout — and substitute the
+  markers. Pure python-docx; avoids docxtpl's looping limits on complex
+  templates. See the README for the marker reference.
 
-* **Tagged template (precise fill)** — the user's ``.docx`` contains Jinja2
-  placeholders (``{{ client }}``, ``{% for f in findings %}`` …). It is filled
-  with ``docxtpl`` straight into the company's own layout. Best control.
+* **Tagged template (docxtpl)** — the ``.docx`` contains Jinja2 placeholders
+  (``{{ client }}``, ``{% for f in findings %}`` …); filled with ``docxtpl``.
 
-* **Branding shell (any template)** — the user's ``.docx`` has *no* tags (a
-  normal company report template). We keep the whole document — cover, intro,
-  methodology, header/footer, fonts, branding — and **append** the generated
-  findings as a new section, rendered in the document's own styles. This is what
-  makes "bring any company template" work without hand-tagging anything.
+* **Branding shell (any template)** — a normal template with no markers/tags:
+  keep the whole document and *append* the findings as a new section.
+
+* **Default layout** — no template given: a clean report built from scratch.
 
 python-docx / docxtpl are optional; install with
 ``pip install 'vapt-report-generator[docx]'``.
@@ -237,12 +240,173 @@ def _render_template(report: Report, output: str, template_path: str) -> str:
     return output
 
 
+# ---------------------------------------------------------------------------
+# Clone-fill mode: replicate the user's own example finding block per finding.
+#
+# The user marks ONE example finding in their template with simple [[markers]]:
+#   [[finding]]  ... example finding paragraphs with [[title]], [[cvss]] …  [[/finding]]
+# and (optionally) one summary-table row containing [[findings_row]].
+# We deep-copy that block/row once per finding — so the company's exact fonts,
+# styles and layout are preserved — and substitute the markers. This is the
+# python-docx way; it avoids docxtpl's loop limitations on complex templates.
+# ---------------------------------------------------------------------------
+import re as _re
+
+_MARK = _re.compile(r"\[\[([a-z_]+)\]\]")
+_BLOCK_START = "[[finding]]"
+_BLOCK_END = "[[/finding]]"
+_ROW_MARK = "[[findings_row]]"
+
+
+def _finding_markers(f, sn: int) -> dict:
+    cvss = f"{f.cvss_score:.1f}" if f.cvss_score is not None else "N/A"
+    return {
+        "sn": str(sn),
+        "id": f.finding_id,
+        "title": f.title or "Untitled finding",
+        "severity": f.severity.value,
+        "cvss": cvss,
+        "cvss_vector": f.cvss_vector or "N/A",
+        "cwe": f.cwe or "N/A",
+        "cve": ", ".join(f.cve) if f.cve else "N/A",
+        "targets": ", ".join(t.label() for t in f.targets) or "N/A",
+        "description": (f.description or "N/A").strip(),
+        "evidence": (f.evidence or "N/A").replace("\r", " ").strip(),
+        "remediation": (f.remediation or "N/A").strip(),
+        "references": ", ".join(f.references) if f.references else "N/A",
+    }
+
+
+def _doc_markers(report: Report) -> dict:
+    c = report.severity_counts()
+    return {
+        "client": report.client,
+        "report_title": report.title,
+        "assessor": report.assessor,
+        "date": report.assessment_date,
+        "standard": report.standard,
+        "risk_rating": report.risk_rating(),
+        "total_findings": str(len(report.findings)),
+        "count_critical": str(c["Critical"]),
+        "count_high": str(c["High"]),
+        "count_medium": str(c["Medium"]),
+        "count_low": str(c["Low"]),
+    }
+
+
+def _fill_markers(paragraph, mapping: dict) -> None:
+    """Replace [[markers]] in a paragraph, preserving runs/breaks where the
+    marker sits inside a single run; falling back to a paragraph-level set
+    (keeps the paragraph style + first run font) for run-split markers."""
+    # First pass: run-level (keeps intra-paragraph formatting and line breaks).
+    for run in paragraph.runs:
+        if "[[" in run.text:
+            run.text = _MARK.sub(lambda m: mapping.get(m.group(1), m.group(0)), run.text)
+    # Second pass: any marker split across runs -> rebuild paragraph text.
+    joined = "".join(r.text for r in paragraph.runs)
+    if "[[" in joined and _MARK.search(joined):
+        new = _MARK.sub(lambda m: mapping.get(m.group(1), m.group(0)), joined)
+        if new != joined and paragraph.runs:
+            paragraph.runs[0].text = new
+            for r in paragraph.runs[1:]:
+                r.text = ""
+
+
+def _template_has_clone_markers(template_path: str) -> bool:
+    from docx import Document
+
+    doc = Document(template_path)
+    for p in doc.paragraphs:
+        if _BLOCK_START in p.text or _ROW_MARK in p.text:
+            return True
+    for t in doc.tables:
+        for row in t.rows:
+            for cell in row.cells:
+                if _ROW_MARK in cell.text or _BLOCK_START in cell.text:
+                    return True
+    return False
+
+
+def _render_clone_fill(report: Report, output: str, template_path: str) -> str:
+    """Clone the marked example finding block / summary row once per finding."""
+    import copy
+
+    from docx import Document
+    from docx.text.paragraph import Paragraph
+
+    doc = Document(template_path)
+    body = doc._body
+    findings = report.findings
+
+    # --- 1) per-finding detail block between [[finding]] and [[/finding]] ---
+    paras = doc.paragraphs
+    starts = [p for p in paras if p.text.strip() == _BLOCK_START]
+    ends = [p for p in paras if p.text.strip() == _BLOCK_END]
+    if starts and ends:
+        start_el, end_el = starts[0]._p, ends[0]._p
+        # paragraphs strictly between the two markers form the template block
+        block_els, cur = [], start_el.getnext()
+        while cur is not None and cur is not end_el:
+            block_els.append(cur)
+            cur = cur.getnext()
+        template_block = [copy.deepcopy(el) for el in block_els]
+        for idx, f in enumerate(findings, 1):
+            mapping = _finding_markers(f, idx)
+            for el in (copy.deepcopy(e) for e in template_block):
+                end_el.addprevious(el)
+                _fill_markers(Paragraph(el, body), mapping)
+        for el in (*block_els, start_el, end_el):
+            el.getparent().remove(el)
+
+    # --- 2) summary-table row containing [[findings_row]] ---
+    for table in doc.tables:
+        marker_row = None
+        for row in table.rows:
+            if any(_ROW_MARK in c.text for c in row.cells):
+                marker_row = row
+                break
+        if marker_row is None:
+            continue
+        tmpl_tr = copy.deepcopy(marker_row._tr)
+        for idx, f in enumerate(findings, 1):
+            new_tr = copy.deepcopy(tmpl_tr)
+            marker_row._tr.addprevious(new_tr)
+            from docx.table import _Row
+
+            new_row = _Row(new_tr, table)
+            mapping = _finding_markers(f, idx)
+            for cell in new_row.cells:
+                for p in cell.paragraphs:
+                    # drop the [[findings_row]] sentinel, then fill fields
+                    for run in p.runs:
+                        run.text = run.text.replace(_ROW_MARK, "")
+                    _fill_markers(p, mapping)
+        marker_row._tr.getparent().remove(marker_row._tr)
+
+    # --- 3) document-level single markers (client/date/counts…) ---
+    docmap = _doc_markers(report)
+    for p in doc.paragraphs:
+        if "[[" in p.text:
+            _fill_markers(p, docmap)
+    for table in doc.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for p in cell.paragraphs:
+                    if "[[" in p.text:
+                        _fill_markers(p, docmap)
+
+    doc.save(output)
+    return output
+
+
 def render(report: Report, output: str, template_path: Optional[str] = None) -> str:
     """Render ``report`` to a .docx file.
 
-    * no template            → default professional layout
-    * template WITH {{ }} tags → precise fill via docxtpl
-    * template WITHOUT tags    → branding shell: keep it, append the findings
+    * no template               → default professional layout
+    * template with [[markers]]  → clone-fill: replicate the marked example
+      finding block per finding, preserving the template's exact formatting
+    * template with {{ }} tags   → precise fill via docxtpl
+    * template without any tags  → branding shell: keep it, append the findings
     """
     if not template_path:
         return _render_default(report, output)
@@ -255,6 +419,8 @@ def render(report: Report, output: str, template_path: Optional[str] = None) -> 
             f"'{Path(template_path).name}'."
         )
 
+    if _template_has_clone_markers(template_path):
+        return _render_clone_fill(report, output, template_path)
     if _template_has_placeholders(template_path):
         return _render_template(report, output, template_path)
     return _render_branding_shell(report, output, template_path)

@@ -403,6 +403,49 @@ def test_docx_untagged_template_becomes_branding_shell(tmp_path):
     assert "SQL Injection" in text
 
 
+def test_docx_clone_fill_replicates_marked_block(tmp_path):
+    pytest.importorskip("docx")
+    from docx import Document
+    from vaptreport import reporters
+
+    # A company template that marks ONE example finding block with [[markers]].
+    tpl = tmp_path / "marked.docx"
+    d = Document()
+    d.add_paragraph("Confidential report for [[client]]")
+    d.add_paragraph("[[finding]]")
+    d.add_heading("[[title]]", level=2)          # example finding title (a real style)
+    d.add_paragraph("Severity: [[severity]] | CVSS [[cvss]] | [[cwe]]")
+    d.add_paragraph("[[description]]")
+    d.add_paragraph("Remediation: [[remediation]]")
+    d.add_paragraph("[[/finding]]")
+    # summary table with one marker row
+    t = d.add_table(rows=2, cols=3)
+    for i, h in enumerate(("S/N", "Finding", "Severity")):
+        t.rows[0].cells[i].text = h
+    t.rows[1].cells[0].text = "[[findings_row]][[sn]]"
+    t.rows[1].cells[1].text = "[[title]]"
+    t.rows[1].cells[2].text = "[[severity]]"
+    d.save(str(tpl))
+
+    findings = detect_and_parse(str(EXAMPLES / "sample_findings.json"))   # 5 findings
+    report = Report(findings=findings, client="OWIT Global").finalize()
+    out = reporters.render(report, "docx", str(tmp_path / "out.docx"), template=str(tpl))
+
+    res = Document(out)
+    text = "\n".join(p.text for p in res.paragraphs)
+    # heading-styled finding titles, one per finding
+    titles = [p.text for p in res.paragraphs if p.style.name.startswith("Heading") and p.text.strip()]
+    assert len(titles) == 5
+    assert "SQL Injection in Login Form" in text
+    assert "OWIT Global" in text          # document-level marker filled
+    assert "[[" not in text               # no leftover markers
+    # summary table cloned to 5 data rows (+ header)
+    assert len(res.tables[0].rows) == 6
+    # markers removed from the table too
+    tbltext = "\n".join(c.text for row in res.tables[0].rows for c in row.cells)
+    assert "[[" not in tbltext
+
+
 def test_docx_template_must_be_docx(tmp_path):
     pytest.importorskip("docx")
     from vaptreport import reporters

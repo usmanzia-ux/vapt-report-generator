@@ -166,9 +166,9 @@ def _prompt_template() -> Optional[str]:
                           "its cover page will be reused and findings rendered in the "
                           "default style. For full field-filling use .docx or .html.j2.")
         elif ext == ".docx":
-            console.print("  [green]✓[/green] Word template — if it has {{ }} tags they're "
-                          "filled; otherwise it's used as a branded shell with the "
-                          "findings appended")
+            console.print("  [green]✓[/green] Word template — [[markers]] clone your exact "
+                          "finding format; {{ }} tags are filled; otherwise it's a branded "
+                          "shell with findings appended")
         elif ext in (".j2", ".html"):
             console.print("  [green]✓[/green] HTML/Jinja2 template — every field will be filled")
         else:
