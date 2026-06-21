@@ -493,17 +493,15 @@ def test_docx_template_must_be_docx(tmp_path):
                          template=str(EXAMPLES / "custom_template.html.j2"))
 
 
-def test_pdf_template_reuses_cover_page(tmp_path):
+def test_pdf_template_pdf_rejected_clearly(tmp_path):
     pytest.importorskip("weasyprint")
-    pytest.importorskip("pypdf")
-    from pypdf import PdfReader
     from weasyprint import HTML
     from vaptreport import reporters
 
+    # A .pdf can't be a fill-in template for PDF output — we reject it with a
+    # clear message (no ugly cover+default hybrid) pointing to the .docx route.
     cover = tmp_path / "company_cover.pdf"
     HTML(string="<h1>ACME COVER PAGE</h1>").write_pdf(str(cover))
     report = Report(findings=detect_and_parse(str(EXAMPLES / "sample_findings.json"))).finalize()
-    out = reporters.render(report, "pdf", str(tmp_path / "r.pdf"), template=str(cover))
-    reader = PdfReader(out)
-    assert "ACME COVER PAGE" in reader.pages[0].extract_text()  # cover preserved
-    assert len(reader.pages) > 1  # findings appended after the cover
+    with pytest.raises(ValueError, match="can't be used as a fill-in template"):
+        reporters.render(report, "pdf", str(tmp_path / "r.pdf"), template=str(cover))
