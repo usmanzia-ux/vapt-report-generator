@@ -44,8 +44,11 @@ def render(
 
 
 def _pdf_from_docx(report: Report, output: str, template: str) -> str:
-    """Build the report as a .docx using the company template, then convert it
-    to PDF with LibreOffice (``soffice``) so the PDF keeps the template's format."""
+    """Build the report as a .docx in the company template, then convert it to PDF
+    with LibreOffice. A *branded* PDF needs a converter (LibreOffice or Word) —
+    there is no pure-Python way. If LibreOffice is missing or fails, we save the
+    branded .docx next to the requested PDF and tell the user to use Word's
+    'Save As → PDF' so they always get a usable, branded file."""
     import shutil
     import subprocess
     import tempfile
@@ -53,14 +56,21 @@ def _pdf_from_docx(report: Report, output: str, template: str) -> str:
 
     from . import docx as _docx
 
+    def _save_docx_fallback(reason: str) -> str:
+        alt = str(Path(output).with_suffix(".docx"))
+        _docx.render(report, alt, template_path=template)
+        raise RuntimeError(
+            f"{reason}\n"
+            f"A branded PDF needs LibreOffice or Microsoft Word to do the "
+            f"conversion — there's no way around that.\n"
+            f"  ✓ I saved your branded Word report at: {alt}\n"
+            f"  → Open it in Word/LibreOffice and use File → Save As → PDF.\n"
+            f"  (Or install LibreOffice: sudo apt install libreoffice, then retry.)"
+        )
+
     soffice = shutil.which("soffice") or shutil.which("libreoffice")
     if not soffice:
-        raise RuntimeError(
-            "Producing a PDF from a .docx template needs LibreOffice (for the "
-            "docx→PDF conversion), which isn't installed. Either:\n"
-            "  • install it:  sudo apt install libreoffice  (Kali/Debian), then retry, or\n"
-            "  • generate the .docx instead (-f docx) and 'Save as PDF' from Word."
-        )
+        return _save_docx_fallback("LibreOffice isn't installed, so I can't make the PDF directly.")
 
     with tempfile.TemporaryDirectory() as tmp:
         docx_path = str(Path(tmp) / "report.docx")
@@ -74,15 +84,15 @@ def _pdf_from_docx(report: Report, output: str, template: str) -> str:
             f"-env:UserInstallation=file://{profile}",
             "--convert-to", "pdf:writer_pdf_Export", "--outdir", tmp, docx_path,
         ]
-        proc = subprocess.run(cmd, capture_output=True, timeout=300)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, timeout=300)
+        except Exception as exc:  # noqa: BLE001
+            return _save_docx_fallback(f"LibreOffice could not be run ({exc}).")
         produced = Path(tmp) / "report.pdf"
         if proc.returncode != 0 or not produced.exists():
             detail = (proc.stderr or proc.stdout or b"").decode("utf-8", "replace").strip()
-            raise RuntimeError(
-                "LibreOffice failed to convert the report to PDF.\n"
-                f"  {detail or 'no output'}\n"
-                "Tips: close any open LibreOffice windows and retry, or generate the "
-                ".docx (-f docx) and use Word's 'Save as PDF'."
+            return _save_docx_fallback(
+                f"LibreOffice failed to convert the report to PDF ({detail or 'no output'})."
             )
         shutil.copyfile(produced, output)
     return output
