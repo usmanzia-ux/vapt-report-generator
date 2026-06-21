@@ -737,9 +737,9 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
 
 
 def _update_severity_chart(docx_path: str, counts: dict, total: int) -> None:
-    """Update an embedded 'count per severity' bar chart (cached values + the
-    embedded worksheet) so it matches the real findings. No-op if no chart."""
-    import io
+    """Update an embedded 'count per severity' bar chart's cached values so it
+    matches the real findings. No-op if no chart. The embedded worksheet is left
+    untouched so the file stays loadable by LibreOffice (for PDF conversion)."""
     import shutil
     import zipfile
 
@@ -781,23 +781,12 @@ def _update_severity_chart(docx_path: str, counts: dict, total: int) -> None:
                     v.text = str(nv)
         parts[chart] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
-    # keep the embedded worksheet in sync so the chart edits cleanly in Word
-    emb = next((n for n in names if n.startswith("word/embeddings/") and n.endswith(".xlsx")), None)
-    if emb:
-        try:
-            import openpyxl
-
-            wb = openpyxl.load_workbook(io.BytesIO(parts[emb]))
-            ws = wb.active
-            for row in range(2, ws.max_row + 1):
-                nv = value_for(ws.cell(row=row, column=1).value)
-                if nv is not None:
-                    ws.cell(row=row, column=2).value = nv
-            bio = io.BytesIO()
-            wb.save(bio)
-            parts[emb] = bio.getvalue()
-        except Exception:  # noqa: BLE001 - chart cache is what's displayed; xlsx is a bonus
-            pass
+    # NOTE: we deliberately do NOT rewrite the chart's embedded Excel workbook.
+    # The chart's displayed values come from the cached <c:numCache> we just set;
+    # re-saving the embedded .xlsx (e.g. with openpyxl) produces an object that
+    # LibreOffice refuses to load ("source file could not be loaded") when it
+    # opens the docx to convert it to PDF. Leaving the workbook untouched keeps
+    # the file loadable everywhere; the chart still shows the right numbers.
 
     tmp = docx_path + ".tmp"
     with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
