@@ -183,7 +183,7 @@ def _prompt_metadata() -> dict:
     meta = {}
     client = Prompt.ask("  Client name", default="").strip()
     title = Prompt.ask("  Report title", default="").strip()
-    assessor = Prompt.ask("  Assessor", default="Usman Zia").strip()
+    assessor = Prompt.ask("  Assessor", default="").strip()
     if client:
         meta["client"] = client
     if title:

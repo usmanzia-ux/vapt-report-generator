@@ -103,7 +103,7 @@ class Report:
 
     client: str = "Confidential Client"
     title: str = "Vulnerability Assessment & Penetration Test Report"
-    assessor: str = "Usman Zia"
+    assessor: str = "Security Assessor"
     assessment_date: str = field(default_factory=lambda: date.today().isoformat())
     scope: List[str] = field(default_factory=list)
     standard: str = "OWASP Top 10 (2021) / CVSS v3.1"

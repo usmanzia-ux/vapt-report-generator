@@ -10,7 +10,7 @@ Schema (all keys optional except ``title``)::
       "report": {
         "client": "Example Corporation",
         "title": "Web Application Penetration Test",
-        "assessor": "Usman Zia",
+        "assessor": "Security Assessor",
         "assessment_date": "2026-06-18",
         "scope": ["https://app.example.com"],
         "standard": "OWASP Top 10 (2021)"
