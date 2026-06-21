@@ -483,6 +483,52 @@ def test_docx_autofill_detects_example_block(tmp_path):
     assert "static appendix content" in text
 
 
+def test_docx_updates_embedded_severity_chart(tmp_path):
+    pytest.importorskip("docx")
+    from lxml import etree
+    from vaptreport.reporters import docx as docx_reporter
+
+    # A docx that already contains an updated chart cache; verify the helper
+    # rewrites the cached values to the real per-severity counts.
+    import io, zipfile
+    from docx import Document
+    base = tmp_path / "base.docx"
+    Document().save(str(base))
+
+    C = "{http://schemas.openxmlformats.org/drawingml/2006/chart}"
+    chart = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">'
+        '<c:chart><c:plotArea><c:barChart><c:ser>'
+        '<c:cat><c:strRef><c:strCache>'
+        '<c:pt idx="0"><c:v>Critical</c:v></c:pt>'
+        '<c:pt idx="1"><c:v>High</c:v></c:pt>'
+        '<c:pt idx="2"><c:v>Low</c:v></c:pt>'
+        '</c:strCache></c:strRef></c:cat>'
+        '<c:val><c:numRef><c:numCache>'
+        '<c:pt idx="0"><c:v>9</c:v></c:pt>'
+        '<c:pt idx="1"><c:v>9</c:v></c:pt>'
+        '<c:pt idx="2"><c:v>9</c:v></c:pt>'
+        '</c:numCache></c:numRef></c:val>'
+        '</c:ser></c:barChart></c:plotArea></c:chart></c:chartSpace>'
+    )
+    # inject the chart part into the docx zip
+    with zipfile.ZipFile(str(base)) as zin:
+        parts = {n: zin.read(n) for n in zin.namelist()}
+    parts["word/charts/chart1.xml"] = chart.encode()
+    with zipfile.ZipFile(str(base), "w", zipfile.ZIP_DEFLATED) as zout:
+        for n, b in parts.items():
+            zout.writestr(n, b)
+
+    counts = {"Critical": 0, "High": 2, "Medium": 5, "Low": 1, "Informational": 9}
+    docx_reporter._update_severity_chart(str(base), counts, total=17)
+
+    root = etree.fromstring(zipfile.ZipFile(str(base)).read("word/charts/chart1.xml"))
+    vals = [pt.find(C + "v").text for pt in root.iter(C + "pt")
+            if pt.getparent().getparent().getparent().tag == C + "val"]
+    assert vals == ["0", "2", "1"]   # Critical, High, Low updated to real counts
+
+
 def test_docx_template_must_be_docx(tmp_path):
     pytest.importorskip("docx")
     from vaptreport import reporters

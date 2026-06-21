@@ -731,7 +731,79 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
     _mark_fields_dirty(doc)
 
     doc.save(output)
+    # post-process the saved file: refresh the embedded severity chart, if any
+    _update_severity_chart(output, report.severity_counts(), len(findings))
     return output
+
+
+def _update_severity_chart(docx_path: str, counts: dict, total: int) -> None:
+    """Update an embedded 'count per severity' bar chart (cached values + the
+    embedded worksheet) so it matches the real findings. No-op if no chart."""
+    import io
+    import shutil
+    import zipfile
+
+    try:
+        from lxml import etree
+    except ImportError:  # pragma: no cover
+        return
+
+    C = "{http://schemas.openxmlformats.org/drawingml/2006/chart}"
+
+    def value_for(cat):
+        c = (cat or "").strip().lower()
+        return {
+            "issues open": total, "issues closed": 0,
+            "critical": counts["Critical"], "high": counts["High"],
+            "medium": counts["Medium"], "low": counts["Low"],
+            "info": counts["Informational"], "informational": counts["Informational"],
+        }.get(c)
+
+    with zipfile.ZipFile(docx_path) as zin:
+        names = zin.namelist()
+        charts = [n for n in names if n.startswith("word/charts/chart") and n.endswith(".xml")]
+        if not charts:
+            return
+        parts = {n: zin.read(n) for n in names}
+
+    for chart in charts:
+        root = etree.fromstring(parts[chart])
+        for ser in root.iter(C + "ser"):
+            cat, val = ser.find(C + "cat"), ser.find(C + "val")
+            if cat is None or val is None:
+                continue
+            idx2cat = {pt.get("idx"): (pt.find(C + "v").text if pt.find(C + "v") is not None else None)
+                       for pt in cat.iter(C + "pt")}
+            for pt in val.iter(C + "pt"):
+                nv = value_for(idx2cat.get(pt.get("idx")))
+                v = pt.find(C + "v")
+                if nv is not None and v is not None:
+                    v.text = str(nv)
+        parts[chart] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+    # keep the embedded worksheet in sync so the chart edits cleanly in Word
+    emb = next((n for n in names if n.startswith("word/embeddings/") and n.endswith(".xlsx")), None)
+    if emb:
+        try:
+            import openpyxl
+
+            wb = openpyxl.load_workbook(io.BytesIO(parts[emb]))
+            ws = wb.active
+            for row in range(2, ws.max_row + 1):
+                nv = value_for(ws.cell(row=row, column=1).value)
+                if nv is not None:
+                    ws.cell(row=row, column=2).value = nv
+            bio = io.BytesIO()
+            wb.save(bio)
+            parts[emb] = bio.getvalue()
+        except Exception:  # noqa: BLE001 - chart cache is what's displayed; xlsx is a bonus
+            pass
+
+    tmp = docx_path + ".tmp"
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for n in names:
+            zout.writestr(n, parts[n])
+    shutil.move(tmp, docx_path)
 
 
 def _mark_fields_dirty(doc) -> None:
