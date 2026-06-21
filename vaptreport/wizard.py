@@ -194,21 +194,32 @@ def _prompt_metadata() -> dict:
 
 
 def _template_ok_for_format(template: Optional[str], fmt: str) -> bool:
-    """Guard incompatible template/format combos with a friendly message."""
+    """Guard incompatible template/format combos with a friendly message.
+
+    A .docx template works for docx AND pdf (pdf is produced by converting the
+    docx via LibreOffice). An HTML/Jinja2 template works for pdf and html.
+    """
     if not template:
         return True
     ext = Path(template).suffix.lower()
-    if fmt == "docx" and ext != ".docx":
-        console.print(f"  [yellow]Your {ext} template only applies to pdf/html output, "
-                      "not docx. The default docx layout will be used.[/yellow]")
+    is_html = ext in (".j2", ".html")
+
+    if ext == ".docx":
+        if fmt in ("docx", "pdf"):
+            return True
+        console.print(f"  [yellow]A .docx template applies to docx/pdf output, not "
+                      f"{fmt}. The default {fmt} layout will be used.[/yellow]")
         return False
-    if fmt in ("pdf", "html") and ext == ".docx":
-        console.print(f"  [yellow]A .docx template only applies to docx output. "
-                      f"The default {fmt} theme will be used.[/yellow]")
+    if is_html:
+        if fmt in ("pdf", "html"):
+            return True
+        console.print(f"  [yellow]An HTML/Jinja2 template applies to pdf/html output, not "
+                      f"{fmt}. The default {fmt} layout will be used.[/yellow]")
         return False
-    if fmt in ("xlsx", "html") and ext == ".pdf":
-        console.print("  [yellow]A PDF template's cover reuse only applies to pdf output. "
-                      f"The default {fmt} theme will be used.[/yellow]")
+    if ext == ".pdf":
+        console.print("  [yellow]A .pdf can't be used as a fill-in template. Use a .docx "
+                      "(for docx/pdf) or .html.j2 (for pdf/html). The default theme will "
+                      "be used.[/yellow]")
         return False
     return True
 
