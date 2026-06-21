@@ -517,6 +517,24 @@ def test_update_chart_xml_rewrites_cached_values():
     assert vals == ["17", "0", "2", "1"]   # Issues Open=total, Critical/High/Low real
 
 
+def test_strip_revision_ids_removes_duplicable_paraids():
+    pytest.importorskip("docx")
+    from docx import Document
+    from vaptreport.reporters.docx import _strip_revision_ids
+
+    W14 = "{http://schemas.microsoft.com/office/word/2010/wordml}"
+    d = Document()
+    p = d.add_paragraph("x")
+    p._p.set(W14 + "paraId", "DEADBEEF")
+    p._p.set(W14 + "textId", "CAFEBABE")
+    assert p._p.get(W14 + "paraId") == "DEADBEEF"
+
+    _strip_revision_ids(d)
+    # duplicated w14 ids (which make LibreOffice reject the file) are removed
+    assert p._p.get(W14 + "paraId") is None
+    assert p._p.get(W14 + "textId") is None
+
+
 def test_docx_template_must_be_docx(tmp_path):
     pytest.importorskip("docx")
     from vaptreport import reporters

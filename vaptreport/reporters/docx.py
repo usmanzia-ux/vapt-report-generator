@@ -450,6 +450,7 @@ def _render_clone_fill(report: Report, output: str, template_path: str) -> str:
                     if "[[" in p.text:
                         _fill_markers(p, docmap)
 
+    _strip_revision_ids(doc)   # cloned rows duplicate w14:paraId -> LibreOffice rejects
     doc.save(output)
     return output
 
@@ -731,6 +732,8 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
     _update_severity_chart(doc, report.severity_counts(), len(findings))
     # make Word refresh the Table of Contents ("CONTENT") on open
     _mark_fields_dirty(doc)
+    # cloned finding blocks duplicate w14:paraId -> LibreOffice rejects the file
+    _strip_revision_ids(doc)
 
     doc.save(output)
     return output
@@ -781,6 +784,20 @@ def _update_severity_chart(doc, counts: dict, total: int) -> None:
         pn = str(part.partname)
         if pn.startswith("/word/charts/chart") and pn.endswith(".xml"):
             part._blob = _update_chart_xml(part.blob, counts, total)
+
+
+def _strip_revision_ids(doc) -> None:
+    """Remove all w14:paraId / w14:textId attributes.
+
+    Cloning the example finding block duplicates these per-paragraph revision
+    IDs; Word tolerates duplicates but LibreOffice rejects the file ("source
+    file could not be loaded"), which breaks docx→PDF conversion. They're
+    optional, so the safe fix is to drop them entirely.
+    """
+    W14 = "{http://schemas.microsoft.com/office/word/2010/wordml}"
+    for node in doc.element.iter():
+        node.attrib.pop(W14 + "paraId", None)
+        node.attrib.pop(W14 + "textId", None)
 
 
 def _mark_fields_dirty(doc) -> None:
