@@ -38,6 +38,61 @@ _SEV_RGB = {
     "Informational": (96, 125, 139),
 }
 
+# Severity → text colour for the summary table and the "Severity:" line:
+# red = High, yellow = Medium, green = Low, blue = Informational, dark red = Critical.
+_SEV_COLOR = {
+    "Critical": (192, 0, 0),
+    "High": (238, 0, 0),
+    "Medium": (191, 143, 0),
+    "Low": (0, 176, 80),
+    "Informational": (0, 112, 192),
+}
+
+
+def _color_value(p, severity: str) -> None:
+    """Colour the value run(s) of a 'Severity: X' paragraph by severity."""
+    from docx.shared import RGBColor
+
+    rgb = _SEV_COLOR.get(severity)
+    if not rgb:
+        return
+    ci = next((i for i, r in enumerate(p.runs) if ":" in r.text), -1)
+    for r in p.runs[ci + 1:]:
+        if r.text.strip():
+            r.font.color.rgb = RGBColor(*rgb)
+
+
+# Severity → cell BACKGROUND fill for the summary table (the template's own
+# OWASP risk-matrix palette), plus a readable text colour for each.
+_SEV_FILL = {
+    "Critical": "C00000",
+    "High": "EE0000",
+    "Medium": "FFC000",
+    "Low": "92D050",
+    "Informational": "00B0F0",
+}
+_SEV_FILL_TEXT = {
+    "Critical": (255, 255, 255),
+    "High": (255, 255, 255),
+    "Medium": (0, 0, 0),
+    "Low": (0, 0, 0),
+    "Informational": (0, 0, 0),
+}
+
+
+def _shade_cell(cell, fill_hex: str) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = tcPr.find(qn("w:shd"))
+    if shd is None:
+        shd = OxmlElement("w:shd")
+        tcPr.append(shd)
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill_hex)
+
 # Table styles we'd like, in order; we fall back to whatever the document has.
 _SUMMARY_STYLES = ("Light List Accent 1", "Light List", "Table Grid")
 _META_STYLES = ("Light Grid Accent 1", "Light Grid", "Table Grid")
@@ -463,6 +518,9 @@ def _fill_affected(p, targets: str) -> None:
             runs[ci + 1].text = " " + targets
         else:
             p.add_run(" " + targets)
+    # blank line between the URL and the "Steps to Reproduce" sub-label
+    if nl < len(runs) and "\n" in runs[nl].text:
+        runs[nl].add_break()
 
 
 def _autodetect_block(doc):
@@ -490,8 +548,62 @@ def _autodetect_block(doc):
     return start, end
 
 
-def _fill_finding_block(block, f) -> None:
+def _strip_numbering(p) -> None:
+    """Remove list numbering/bullet from a paragraph so a single value doesn't
+    inherit a stray continuing number (e.g. '4. <evidence>')."""
+    from docx.oxml.ns import qn
+
+    pPr = p._p.find(qn("w:pPr"))
+    if pPr is not None:
+        numPr = pPr.find(qn("w:numPr"))
+        if numPr is not None:
+            pPr.remove(numPr)
+
+
+def _remove(p) -> None:
+    parent = p._p.getparent()
+    if parent is not None:
+        parent.remove(p._p)
+
+
+def _collapse_blanks(block) -> None:
+    """Collapse runs of consecutive empty paragraphs down to a single one."""
+    prev_blank = False
+    for p in block:
+        if p._p.getparent() is None:
+            continue
+        blank = not p.text.strip()
+        if blank and prev_blank:
+            _remove(p)
+        else:
+            prev_blank = blank
+
+
+def _block_font(block) -> str:
+    """Most common explicit run font in the block (defaults to Arial)."""
+    from collections import Counter
+
+    c = Counter()
+    for p in block:
+        for r in p.runs:
+            if r.font.name:
+                c[r.font.name] += 1
+    return c.most_common(1)[0][0] if c else "Arial"
+
+
+def _unify_font(block, font_name: str) -> None:
+    """Force one font across the whole block so added runs (URLs, etc.) match."""
+    for p in block:
+        if p._p.getparent() is None:
+            continue
+        for r in p.runs:
+            r.font.name = font_name
+
+
+def _fill_finding_block(block, f, page_break: bool = False, font_name: str = "Arial") -> None:
     """Fill one cloned finding block (list of Paragraphs) with finding ``f``."""
+    if page_break:
+        block[0].paragraph_format.page_break_before = True
     _set_keep(block[0], f.title or "N/A")
     i = 1
     while i < len(block):
@@ -510,9 +622,11 @@ def _fill_finding_block(block, f) -> None:
             continue
         if ("remediation" in low or "recommendation" in low) and low.endswith(":"):
             _set_keep(block[i + 1], (f.remediation or "N/A").strip())
+            # drop any leftover example paragraphs (2nd remediation line + blanks)
+            # between the value and the References line
             j = i + 2
             while j < len(block) and not block[j].text.strip().lower().startswith("reference"):
-                _set_keep(block[j], "")
+                _remove(block[j])
                 j += 1
             i = j
             continue
@@ -520,19 +634,31 @@ def _fill_finding_block(block, f) -> None:
             _set_inline(p, f.cwe or "N/A")
         elif low.startswith("severity"):
             _set_inline(p, f.severity.value)
+            _color_value(p, f.severity.value)        # colour-code the severity
         elif low.startswith("affected"):
-            _fill_affected(p, ", ".join(t.label() for t in f.targets) or "N/A")
+            _fill_affected(p, ", ".join(t.host for t in f.targets) or "N/A")  # host only
         elif low.startswith("reference"):
-            _set_inline(p, ", ".join(f.references) if f.references else "N/A")
+            # 'References:' label on its own line, then each URL on a new line
+            refs = f.references or ["N/A"]
+            ci = next((k for k, r in enumerate(p.runs) if ":" in r.text), None)
+            if ci is not None:
+                for r in p.runs[ci + 1:]:
+                    r.text = ""
+            for ref in refs:
+                p.add_run().add_break()
+                p.add_run(ref)
         elif p.style.name == "List Paragraph":
             _set_keep(p, (f.evidence or "N/A").replace("\r", " ").strip())
+            _strip_numbering(p)                       # no stray "4." in front of the PoC text
             j = i + 1
             while j < len(block) and block[j].style.name == "List Paragraph":
-                block[j]._p.getparent().remove(block[j]._p)
+                _remove(block[j])
                 j += 1
             i = j
             continue
         i += 1
+    _collapse_blanks(block)
+    _unify_font(block, font_name)
 
 
 def _render_autofill(report: Report, output: str, template_path: str, block) -> str:
@@ -551,8 +677,9 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
     start, end = block
     block_els = [ps[i]._p for i in range(start, end + 1)]
     template_block = [copy.deepcopy(e) for e in block_els]
+    font = _block_font([Paragraph(e, body) for e in block_els])  # one font for all
 
-    _fill_finding_block([Paragraph(e, body) for e in block_els], findings[0])
+    _fill_finding_block([Paragraph(e, body) for e in block_els], findings[0], font_name=font)
     prev = block_els[-1]
     for f in findings[1:]:
         new = [copy.deepcopy(e) for e in template_block]
@@ -560,11 +687,15 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
         for e in new:
             ref.addnext(e)
             ref = e
-        _fill_finding_block([Paragraph(e, body) for e in new], f)
+        # each subsequent finding starts on a fresh page
+        _fill_finding_block([Paragraph(e, body) for e in new], f, page_break=True, font_name=font)
         prev = new[-1]
 
     # summary table: the widest "findings" table (most rows / 4 cols) gets refreshed
-    cand = [t for t in doc.tables if len(t.columns) == 4 and t.rows]
+    from docx.shared import RGBColor
+
+    cand = [t for t in doc.tables if len(t.columns) == 4 and t.rows
+            and "url" not in " ".join(c.text.lower() for c in t.rows[0].cells)]
     if cand:
         tbl = max(cand, key=lambda t: len(t.rows))
         tmpl_tr = copy.deepcopy(tbl.rows[0]._tr)
@@ -577,9 +708,108 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
             _set_keep(c[1].paragraphs[0], f.title)
             _set_keep(c[2].paragraphs[0], f.severity.value)
             _set_keep(c[3].paragraphs[0], (f.description or "N/A")[:200])
+            # colour-code the severity cell BACKGROUND (template palette)
+            fill = _SEV_FILL.get(f.severity.value)
+            if fill:
+                _shade_cell(c[2], fill)
+                txt = _SEV_FILL_TEXT.get(f.severity.value, (0, 0, 0))
+                for r in c[2].paragraphs[0].runs:
+                    r.font.color.rgb = RGBColor(*txt)
+
+    # scope: replace the template's placeholder client name with the real client
+    _replace_client_placeholder(doc, report.client)
+    # executive summary: fix the per-severity counts sentence
+    _update_exec_summary(doc, report.severity_counts())
+    # target-provided table: fill with the assessed URLs from the findings
+    hosts = []
+    for f in findings:
+        for t in f.targets:
+            if t.host not in hosts:
+                hosts.append(t.host)
+    _fill_target_table(doc, hosts)
+    # make Word refresh the Table of Contents ("CONTENT") on open
+    _mark_fields_dirty(doc)
 
     doc.save(output)
     return output
+
+
+def _mark_fields_dirty(doc) -> None:
+    """Set <w:updateFields/> so Word rebuilds the TOC and other fields on open."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    settings = doc.settings.element
+    uf = settings.find(qn("w:updateFields"))
+    if uf is None:
+        uf = OxmlElement("w:updateFields")
+        settings.append(uf)
+    uf.set(qn("w:val"), "true")
+
+
+# Common client placeholders seen in report templates (case-sensitive tokens).
+_CLIENT_PLACEHOLDERS = ("ABC", "XYZ", "ACME", "Acme", "[Client]", "<Client>",
+                        "Client Name", "Company Name", "CLIENT_NAME")
+
+
+def _replace_client_placeholder(doc, client: str) -> None:
+    """Swap a template's placeholder client name (e.g. 'ABC') for the real one,
+    in body paragraphs only (run-level, preserving formatting)."""
+    for p in doc.paragraphs:
+        for r in p.runs:
+            for ph in _CLIENT_PLACEHOLDERS:
+                if ph in r.text:
+                    r.text = r.text.replace(ph, client)
+
+
+def _update_exec_summary(doc, counts) -> None:
+    """Fix the 'identified: N CRITICAL, N HIGH, …' sentence in the Executive
+    Summary with the real per-severity counts."""
+    import re
+
+    sev_map = {
+        "CRITICAL": counts["Critical"], "HIGH": counts["High"],
+        "MEDIUM": counts["Medium"], "LOW": counts["Low"],
+        "INFORMATIONAL": counts["Informational"],
+    }
+    pat = re.compile(r"\b([A-Za-z0-9]+)\s+(CRITICAL|HIGH|MEDIUM|LOW|INFORMATIONAL)\b")
+    for p in doc.paragraphs:
+        text = p.text
+        if "identified" in text.lower() and pat.search(text):
+            new = pat.sub(lambda m: f"{sev_map[m.group(2)]} {m.group(2)}", text)
+            if new != text and p.runs:
+                p.runs[0].text = new
+                for r in p.runs[1:]:
+                    r.text = ""
+            return
+
+
+def _fill_target_table(doc, hosts) -> None:
+    """Fill the 'Target Provided' table (header mentions URL/IP) with the
+    assessed targets, one row per host."""
+    import copy
+
+    if not hosts:
+        return
+    for t in doc.tables:
+        if not t.rows:
+            continue
+        hdr = " ".join(c.text.lower() for c in t.rows[0].cells)
+        if "url" not in hdr or "severity" in hdr:   # skip the findings summary table
+            continue
+        if len(t.columns) < 2:
+            continue
+        tmpl = copy.deepcopy(t.rows[1]._tr if len(t.rows) > 1 else t.rows[0]._tr)
+        for row in list(t.rows)[1:]:
+            row._tr.getparent().remove(row._tr)
+        for sn, h in enumerate(hosts, 1):
+            t._tbl.append(copy.deepcopy(tmpl))
+            c = t.rows[-1].cells
+            _set_keep(c[0].paragraphs[0], str(sn))
+            _set_keep(c[1].paragraphs[0], f"https://{h}/")
+            if len(c) > 2:
+                _set_keep(c[2].paragraphs[0], "")
+        return
 
 
 def render(report: Report, output: str, template_path: Optional[str] = None) -> str:
