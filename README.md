@@ -55,19 +55,10 @@ pip install -e ".[pdf]"
 
 # Optional: Word (.docx) input templates and output
 pip install -e ".[docx]"
-```
 
-> **⚠️ Required for PDF output from a `.docx`/Word template: LibreOffice.**
-> Producing a *branded* PDF (your company Word template → PDF) converts the
-> generated `.docx` with LibreOffice — there is no pure-Python way to do this.
-> Install it once:
-> ```bash
-> sudo apt install libreoffice        # Debian/Kali/Ubuntu
-> # macOS:  brew install --cask libreoffice
-> ```
-> Without LibreOffice, PDF-from-template still works **indirectly**: the tool
-> saves the branded `.docx` and you do **File → Save As → PDF** in Word/LibreOffice.
-> (The default-theme PDF and HTML/Excel outputs don't need LibreOffice.)
+# Required for PDF output from a Word/.docx template:
+sudo apt install libreoffice
+```
 
 ---
 

@@ -7,8 +7,4 @@ pyyaml>=6.0
 # Optional, for Word (.docx) templates / output:
 # python-docx>=1.1
 # docxtpl>=0.16
-#
-# SYSTEM REQUIREMENT (not a pip package): producing a PDF from a Word/.docx
-# template needs LibreOffice for the docx->PDF conversion. Install it with:
-#   sudo apt install libreoffice        # Debian/Kali/Ubuntu
-# Without it, the tool saves the branded .docx and you "Save As -> PDF" in Word.
+# PDF from a Word template also needs LibreOffice:  sudo apt install libreoffice
