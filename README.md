@@ -102,6 +102,10 @@ styled wizard walks you through the whole thing — no flags to remember:
 4. choose the output format (**PDF / Word / HTML / Excel**)
 5. name the output file — done
 
+> **Tip:** put your scanner report and your company template (`.docx`) in the
+> folder you run `vaptreport` from (e.g. the cloned project directory). The
+> wizard scans that folder and lists those files for you to pick by number.
+
 It's the same engine as the flags below, just collected one question at a time.
 
 Example terminal output:
