@@ -65,13 +65,25 @@ def _pdf_from_docx(report: Report, output: str, template: str) -> str:
     with tempfile.TemporaryDirectory() as tmp:
         docx_path = str(Path(tmp) / "report.docx")
         _docx.render(report, docx_path, template_path=template)
-        subprocess.run(
-            [soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp, docx_path],
-            check=True, capture_output=True, timeout=180,
-        )
+
+        # Use an isolated LibreOffice profile so the conversion works even when a
+        # LibreOffice window is already open (otherwise it fails on a profile lock).
+        profile = Path(tmp) / "lo_profile"
+        cmd = [
+            soffice, "--headless", "--norestore", "--nolockcheck",
+            f"-env:UserInstallation=file://{profile}",
+            "--convert-to", "pdf:writer_pdf_Export", "--outdir", tmp, docx_path,
+        ]
+        proc = subprocess.run(cmd, capture_output=True, timeout=300)
         produced = Path(tmp) / "report.pdf"
-        if not produced.exists():
-            raise RuntimeError("LibreOffice did not produce a PDF from the .docx template.")
+        if proc.returncode != 0 or not produced.exists():
+            detail = (proc.stderr or proc.stdout or b"").decode("utf-8", "replace").strip()
+            raise RuntimeError(
+                "LibreOffice failed to convert the report to PDF.\n"
+                f"  {detail or 'no output'}\n"
+                "Tips: close any open LibreOffice windows and retry, or generate the "
+                ".docx (-f docx) and use Word's 'Save as PDF'."
+            )
         shutil.copyfile(produced, output)
     return output
 
