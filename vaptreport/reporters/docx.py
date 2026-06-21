@@ -727,72 +727,60 @@ def _render_autofill(report: Report, output: str, template_path: str, block) -> 
             if t.host not in hosts:
                 hosts.append(t.host)
     _fill_target_table(doc, hosts)
+    # refresh the embedded severity chart's cached values (in-memory, before save)
+    _update_severity_chart(doc, report.severity_counts(), len(findings))
     # make Word refresh the Table of Contents ("CONTENT") on open
     _mark_fields_dirty(doc)
 
     doc.save(output)
-    # post-process the saved file: refresh the embedded severity chart, if any
-    _update_severity_chart(output, report.severity_counts(), len(findings))
     return output
 
 
-def _update_severity_chart(docx_path: str, counts: dict, total: int) -> None:
-    """Update an embedded 'count per severity' bar chart's cached values so it
-    matches the real findings. No-op if no chart. The embedded worksheet is left
-    untouched so the file stays loadable by LibreOffice (for PDF conversion)."""
-    import shutil
-    import zipfile
+def _update_chart_xml(xml: bytes, counts: dict, total: int) -> bytes:
+    """Pure helper: rewrite a chart part's cached series values per category."""
+    from lxml import etree
 
+    C = "{http://schemas.openxmlformats.org/drawingml/2006/chart}"
+    mapping = {
+        "issues open": total, "issues closed": 0,
+        "critical": counts["Critical"], "high": counts["High"],
+        "medium": counts["Medium"], "low": counts["Low"],
+        "info": counts["Informational"], "informational": counts["Informational"],
+    }
+    root = etree.fromstring(xml)
+    for ser in root.iter(C + "ser"):
+        cat, val = ser.find(C + "cat"), ser.find(C + "val")
+        if cat is None or val is None:
+            continue
+        idx2cat = {pt.get("idx"): (pt.find(C + "v").text if pt.find(C + "v") is not None else None)
+                   for pt in cat.iter(C + "pt")}
+        for pt in val.iter(C + "pt"):
+            nv = mapping.get((idx2cat.get(pt.get("idx")) or "").strip().lower())
+            v = pt.find(C + "v")
+            if nv is not None and v is not None:
+                v.text = str(nv)
+    return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+
+def _update_severity_chart(doc, counts: dict, total: int) -> None:
+    """Update an embedded 'count per severity' bar chart's cached values so it
+    matches the real findings, working on the in-memory document part so
+    python-docx writes a clean package on save. No-op if no chart.
+
+    We update ONLY the chart's cached values (<c:numCache>) — never the embedded
+    Excel workbook — and never repackage the .zip ourselves: both of those
+    produced files LibreOffice refused to load ("source file could not be
+    loaded") when converting to PDF.
+    """
     try:
-        from lxml import etree
+        import lxml.etree  # noqa: F401 - ensure lxml is available
     except ImportError:  # pragma: no cover
         return
 
-    C = "{http://schemas.openxmlformats.org/drawingml/2006/chart}"
-
-    def value_for(cat):
-        c = (cat or "").strip().lower()
-        return {
-            "issues open": total, "issues closed": 0,
-            "critical": counts["Critical"], "high": counts["High"],
-            "medium": counts["Medium"], "low": counts["Low"],
-            "info": counts["Informational"], "informational": counts["Informational"],
-        }.get(c)
-
-    with zipfile.ZipFile(docx_path) as zin:
-        names = zin.namelist()
-        charts = [n for n in names if n.startswith("word/charts/chart") and n.endswith(".xml")]
-        if not charts:
-            return
-        parts = {n: zin.read(n) for n in names}
-
-    for chart in charts:
-        root = etree.fromstring(parts[chart])
-        for ser in root.iter(C + "ser"):
-            cat, val = ser.find(C + "cat"), ser.find(C + "val")
-            if cat is None or val is None:
-                continue
-            idx2cat = {pt.get("idx"): (pt.find(C + "v").text if pt.find(C + "v") is not None else None)
-                       for pt in cat.iter(C + "pt")}
-            for pt in val.iter(C + "pt"):
-                nv = value_for(idx2cat.get(pt.get("idx")))
-                v = pt.find(C + "v")
-                if nv is not None and v is not None:
-                    v.text = str(nv)
-        parts[chart] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
-
-    # NOTE: we deliberately do NOT rewrite the chart's embedded Excel workbook.
-    # The chart's displayed values come from the cached <c:numCache> we just set;
-    # re-saving the embedded .xlsx (e.g. with openpyxl) produces an object that
-    # LibreOffice refuses to load ("source file could not be loaded") when it
-    # opens the docx to convert it to PDF. Leaving the workbook untouched keeps
-    # the file loadable everywhere; the chart still shows the right numbers.
-
-    tmp = docx_path + ".tmp"
-    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
-        for n in names:
-            zout.writestr(n, parts[n])
-    shutil.move(tmp, docx_path)
+    for part in doc.part.package.iter_parts():
+        pn = str(part.partname)
+        if pn.startswith("/word/charts/chart") and pn.endswith(".xml"):
+            part._blob = _update_chart_xml(part.blob, counts, total)
 
 
 def _mark_fields_dirty(doc) -> None:
